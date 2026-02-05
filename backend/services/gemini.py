@@ -9,12 +9,22 @@ llm = ChatGoogleGenerativeAI(
     temperature=0.5
 )
 
+def read_system_prompt(filepath):
+    """Making this a function for future prompt txt file reading"""
+    with open(filepath, 'r', encoding='utf-8') as f:
+        text = f.read()
+    return text
+
+system_prompt = read_system_prompt("backend/prompts/system.txt")
+
 prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful chatbot."),
+    ("system", f"{system_prompt}"),
     ("user", "{message}")
 ])
 
 chain = prompt | llm
 
 def run_chat(user_message: str) -> str:
-    return chain.invoke({"message": user_message}).content
+    result = chain.invoke({"message": user_message}).content
+    # print(f"[DEBUG] Full Result: {result}") 
+    return result
