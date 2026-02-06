@@ -96,14 +96,35 @@
     <div id="input-area">
       <input type="text" id="user_input" placeholder="Type your message..." onkeydown="handleEnter(event)" />
       <button onclick="sendMessage()">Send</button>
+      <button onclick="saveTranscript()">End</button>
     </div>
     <div id="status" class="loading"></div>
   </div>
 
   <script>
+
+    let sessionId = null;
+
     const messagesEl = document.getElementById("messages");
     const inputEl = document.getElementById("user_input");
     const statusEl = document.getElementById("status");
+
+    // When the window loads, start session
+    // Maybe later, change it so that the session persists across refreshes
+    window.addEventListener('DOMContentLoaded', () => {
+      initSession();
+    });
+
+    function initSession() {
+      sessionId = crypto.randomUUID(); 
+      console.log('New session started:', sessionId);
+    }
+
+    async function saveTranscript() {
+      await fetch(`http://127.0.0.1:8000/api/transcript/save/${sessionId}`, {
+        method: "POST"
+      });
+    }
 
     function addMessage(content, isUser = false) {
       const msgDiv = document.createElement("div");
@@ -126,7 +147,7 @@
         const response = await fetch("http://127.0.0.1:8000/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_query: input })
+          body: JSON.stringify({ user_query: input, session_id: sessionId })
         });
 
         const data = await response.json();

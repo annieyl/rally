@@ -1,0 +1,18 @@
+[
+  {
+    "role": "user",
+    "message": "hi"
+  },
+  {
+    "role": "bot",
+    "message": "Hello! Thank you for coming in. I'm excited to hear about your project idea.\n\nTo start, can you give me the high-level concept you are thinking of? Once I understand the general scope, we can drill down into the specifics.\n\nSpecifically, I need to understand the core problem you are trying to solve. What is the current situation that makes this project necessary? If you could boil it down to one sentence, what is the specific pain point or inefficiency that you are hoping this solution will eliminate?"
+  },
+  {
+    "role": "user",
+    "message": "access to career information"
+  },
+  {
+    "role": "bot",
+    "message": "That is a great starting point. Access to good career information is crucial. To help me scope this project correctly, let's define exactly what we are trying to achieve.\n\nFirst, who is the specific audience we are targeting? Are these high school students, people looking to change careers, or perhaps recent university graduates?\n\nSecond, what is the specific problem they are facing right now? What difficulty are they experiencing that this project needs to solve? For example, are they overwhelmed by too much information, or is the information they find inaccurate, or is it simply too hard to navigate?\n\nFinally, can you give me a concrete example of when this lack of access caused a problem? Describe a situation where a user needed specific career information but failed to find it easily. Also, what is a specific future situation you anticipate where this new system will provide the perfect solution?\n\nIs there anything else you want to add?"
+  }
+]

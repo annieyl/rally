@@ -27,4 +27,11 @@ chain = prompt | llm
 def run_chat(user_message: str) -> str:
     result = chain.invoke({"message": user_message}).content
     # print(f"[DEBUG] Full Result: {result}") 
+
+    # Sometimes it returns a list of json (even though I tried to specify
+    # in the prompt to return only plain text)
+    # If you don't convert it you'll get [object Object] as the chat response
+    if not isinstance(result, str):
+        result = result[0]['text']
+
     return result
