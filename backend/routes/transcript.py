@@ -28,13 +28,6 @@ def add_message(session_id: str, role: str, message: str):
 
     # print(f"[DEBUG] Added message {message_dictionary} to session {session_id}")
 
-def get_transcript(session_id: str):
-    """
-    Returns: 
-        list: messages from that session (empty if doesn't exist)
-    """
-    return sessions[session_id]
-
 def save_transcript(session_id: str):
     transcript = sessions[session_id] 
     os.makedirs("backend/transcripts", exist_ok=True)  # Create folder if needed
