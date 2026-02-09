@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>Gemini Chatbot</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     body {
       font-family: 'Segoe UI', sans-serif;
@@ -129,7 +130,11 @@
     function addMessage(content, isUser = false) {
       const msgDiv = document.createElement("div");
       msgDiv.classList.add("msg", isUser ? "user-msg" : "bot-msg");
-      msgDiv.textContent = content;
+      if (isUser) {
+        msgDiv.textContent = content;
+      } else {
+        msgDiv.innerHTML = marked.parse(content);
+      }
       messagesEl.appendChild(msgDiv);
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
