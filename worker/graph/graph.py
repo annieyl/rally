@@ -2,11 +2,12 @@
 
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
+import sys
 
 # The state of the conditional graph
 class ConditionalState(TypedDict):
     user_input: str # User's feedback
-    transcript_filepath: str # Container for passing transcript text
+    transcript_filepath: str # Filepath to transcript -- TODO: figure out supabase
     summary_filepath: str # Filepath to generated summary
     next: str  # The next node to route to
     iteration: int # Helpful for debugging; track which iteration of human feedback we're on
@@ -48,7 +49,14 @@ def general_info(state: ConditionalState) -> dict:
 
 if __name__ == "__main__":
     
-    # TODO: take in CLI arg for transcript session id
+    # Take in CLI arg for transcript session id
+    # FOR NOW, LET'S JUST INPUT THE TRANSCRIPT FILEPATH
+    if len(sys.argv) != 2:
+        print(f"Usage: {sys.argv[0]} <session_id>")
+        sys.exit(1)
+
+    session_id = sys.argv[1]
+    print(f"[DEBUG] Starting LangGraph for session {session_id}")
 
     # Set up the graph
     graph = StateGraph(ConditionalState)
@@ -59,13 +67,13 @@ if __name__ == "__main__":
     # Set the entry point and the conditional edges
     graph.set_entry_point("check")
     graph.add_conditional_edges(
-    "check", # The source node for the decision
-    lambda state: state["next"], # A function to extract the routing key from the state
-    {
-        # A map of routing keys to destination nodes
-        "pricing": "pricing",
-        "general": "general"
-    }
+        "check", # The source node for the decision
+        lambda state: state["next"], # A function to extract the routing key from the state
+        {
+            # A map of routing keys to destination nodes
+            "pricing": "pricing",
+            "general": "general"
+        }
     )
 
     # Add edges from the final nodes to the end
