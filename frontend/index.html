@@ -136,7 +136,7 @@
     });
 
     function initSession() {
-      sessionId = Date.now(); 
+      sessionId = Date.now().toString(); 
       console.log('New session started:', sessionId);
       sesh.textContent = "Session ID: " + sessionId;
     }

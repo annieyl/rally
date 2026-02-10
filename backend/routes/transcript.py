@@ -30,6 +30,7 @@ def add_message(session_id: str, role: str, message: str):
 
 def save_transcript(session_id: str):
     transcript = sessions[session_id] 
+    # print(f"[DEBUG] Saving transcript, here are all session transcripts {sessions}")
     os.makedirs("backend/transcripts", exist_ok=True)  # Create folder if needed
     filepath = f"backend/transcripts/transcript_{session_id}.json"
     try:

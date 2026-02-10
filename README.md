@@ -42,6 +42,10 @@ pip install -r requirements.txt
 
 ## Running the Application
 
+### 0. Activate virtual environment
+Windows: `.venv\Scripts\activate`
+MacOS: `source .venv/bin/activate`
+
 ### 1. Start the Backend Server
 
 ```bash
