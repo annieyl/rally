@@ -3,6 +3,7 @@
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
 import sys
+import os
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -18,7 +19,7 @@ class ConditionalState(TypedDict):
     transcript_text: str
     summary_filepath: str # Filepath to generated summary
     summary_text: str
-    next: str  # The next node to route to
+    next: str  # The next node to route to (for conditional)
     iteration: int # Helpful for debugging; track which iteration of human feedback we're on
 
 # The functions for each node
@@ -62,31 +63,51 @@ def summarize(state: ConditionalState) -> dict:
     response = llm.invoke([system_prompt, transcript])
     summary_text = response.content
 
-    print(f"[DEBUG] Summary generated {summary_text}")
 
+    if not isinstance(summary_text, str):
+        summary_text = summary_text[0]['text']
+
+    print(f"[DEBUG] Summary generated {summary_text}")
+    
     return {"summary_text": summary_text}
 
 def human_validate(state: ConditionalState) -> dict:
-    """Ask human to read summary and provide feedback"""
-    pass 
+    """
+    Ask human to read summary and provide feedback
+    At this point, the summary_text in the state should already be occupied 
+    and the summary has been printed to CLI.
+    """
+    print("[DEBUG] Entering node for human validation")
+    while True:
+        acceptance = input("Does this summary look correct? (y/n): ")
+        if acceptance.lower() in {"y", "yes"}:
+            print(f"[DEBUG] Accepted iteration {state.get("iteration")} of the summary")
+            return {"next": "save_summary"}
+        elif acceptance in {"n", "no"}:
+            print(f"[DEBUG] Rejected iteration {state.get("iteration")} of the summary")
+            feedback = input("Please provide feedback for why this looks incorrect: ")
+            # Append new feedback to previous 
+            prev_input = state.get("user_input", "")
+            return {"next": "edit", "user_input": feedback + prev_input}
+        else:
+            print("Please enter (y/n)")
+    
 
 def edit(state: ConditionalState) -> dict:
     """Take human feedback, reprompt to fix"""
     pass 
 
-def check_query(state: ConditionalState) -> dict:
-    """Checks the query and returns a routing decision."""
-    query = state.get("input", "").lower()
-    if "pricing" in query:
-        return {"next": "pricing"}
-    else:
-        return {"next": "general"}
-
-def pricing_info(state: ConditionalState) -> dict:
-    """Provides pricing information."""
-    print("Here’s detailed pricing information.")
-    return {}
-
+def save_summary(state: ConditionalState) -> dict:
+    """Passed human feedback, save to local file"""
+    print("[DEBUG] Entering node for saving summary locally")
+    os.makedirs("worker/summaries", exist_ok=True)
+    filepath = f"worker/summaries/summary_test.txt" # fix this later
+    try:
+        with open(filepath, 'w', encoding='utf-8') as f:
+            summary = state.get("summary_text", "")
+            f.write(summary)
+    except IOError as e:
+        print(f"[ERROR] An error occurred when writing to the file: {e}")
 
 
 if __name__ == "__main__":
@@ -104,28 +125,27 @@ if __name__ == "__main__":
     graph = StateGraph(ConditionalState)
     graph.add_node("get_transcript_local", get_transcript_local)
     graph.add_node("summarize", summarize)
+    graph.add_node("human_validate", human_validate)
+    graph.add_node("edit", edit)
+    graph.add_node("save_summary", save_summary)
 
     # Set the entry point 
     graph.set_entry_point("get_transcript_local")
 
     # Add static edges
     graph.add_edge("get_transcript_local", "summarize")
-    graph.add_edge("summarize", END) # temporary
+    graph.add_edge("summarize", "human_validate") 
 
     # Add conditional edges
-    # graph.add_conditional_edges(
-    #     "check", # The source node for the decision
-    #     lambda state: state["next"], # A function to extract the routing key from the state
-    #     {
-    #         # A map of routing keys to destination nodes
-    #         "pricing": "pricing",
-    #         "general": "general"
-    #     }
-    # )
+    graph.add_conditional_edges(
+        "human_validate", # source node for decision
+        path=lambda state: state["next"], # function to get the routing key from state
+        path_map={
+            "save_summary": "save_summary",
+            "edit": "edit"
+        }
+    )
 
     # Compile and run
-    initial_state = {
-        "iteration": 0,
-    }
     app = graph.compile()
-    app.invoke({"transcript_filepath": session_id})
+    app.invoke({"transcript_filepath": session_id, "iteration": 0})
