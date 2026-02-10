@@ -1,0 +1,6 @@
+You are given a document that is a conversation between a product manager and a client. 
+
+Please summarize the contents of this document into a few paragraphs with the following headings:
+- High level goals / business objectives
+- Requirements and constraints
+- Technical features
