@@ -68,7 +68,7 @@ def summarize(state: ConditionalState) -> dict:
         summary_text = summary_text[0]['text']
 
     print(f"[DEBUG] Summary generated {summary_text}")
-    
+
     return {"summary_text": summary_text}
 
 def human_validate(state: ConditionalState) -> dict:
@@ -82,7 +82,7 @@ def human_validate(state: ConditionalState) -> dict:
         acceptance = input("Does this summary look correct? (y/n): ")
         if acceptance.lower() in {"y", "yes"}:
             print(f"[DEBUG] Accepted iteration {state.get("iteration")} of the summary")
-            return {"next": "save_summary"}
+            return {"next": "save_summary", "iteration": state.get("iteration") + 1}
         elif acceptance in {"n", "no"}:
             print(f"[DEBUG] Rejected iteration {state.get("iteration")} of the summary")
             feedback = input("Please provide feedback for why this looks incorrect: ")
@@ -95,7 +95,9 @@ def human_validate(state: ConditionalState) -> dict:
 
 def edit(state: ConditionalState) -> dict:
     """Take human feedback, reprompt to fix"""
-    pass 
+    print(f"[DEBUG] Entering node for prompting AI to edit summary")
+    feedback = state.get("user_input", "")
+    print(feedback)
 
 def save_summary(state: ConditionalState) -> dict:
     """Passed human feedback, save to local file"""
