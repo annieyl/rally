@@ -52,6 +52,7 @@ def summarize(state: ConditionalState) -> dict:
         temperature=0.5,
     )
     
+    # Put this in a utils folder somewhere, also used in backend
     def read_system_prompt(filepath):
         """Making this a function for future prompt txt file reading"""
         with open(filepath, 'r', encoding='utf-8') as f:
@@ -88,7 +89,7 @@ def human_validate(state: ConditionalState) -> dict:
             feedback = input("Please provide feedback for why this looks incorrect: ")
             # Append new feedback to previous 
             prev_input = state.get("user_input", "")
-            return {"next": "edit", "user_input": feedback + prev_input}
+            return {"next": "edit", "user_input": feedback + "~" + prev_input}
         else:
             print("Please enter (y/n)")
     
@@ -98,6 +99,37 @@ def edit(state: ConditionalState) -> dict:
     print(f"[DEBUG] Entering node for prompting AI to edit summary")
     feedback = state.get("user_input", "")
     print(feedback)
+
+    transcript = state.get("transcript_text", "")
+    summary = "[CURRENT SUMMARY]" + state.get("summary_text", "")
+
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-flash-latest",
+        temperature=0.5,
+    )
+
+    # Extract most recent
+    most_recent = feedback.split("~")[0]
+    previous = feedback.split("~")[1:]
+
+        # Put this in a utils folder somewhere, also used in backend
+    def read_system_prompt(filepath):
+        """Making this a function for future prompt txt file reading"""
+        with open(filepath, 'r', encoding='utf-8') as f:
+            text = f.read()
+        return text
+
+    system_prompt = f"{read_system_prompt("worker/prompts/edit_summary.txt")} [MOST RECENT FEEDBACK] {most_recent} [OLDER FEEDBACK] {previous}"
+
+    response = llm.invoke([system_prompt, transcript, summary])
+    summary_text = response.content
+
+    if not isinstance(summary_text, str):
+        summary_text = summary_text[0]['text']
+
+        print(f"[DEBUG] Summary generated {summary_text}")
+
+    return {"summary_text": summary_text}
 
 def save_summary(state: ConditionalState) -> dict:
     """Passed human feedback, save to local file"""
@@ -137,6 +169,7 @@ if __name__ == "__main__":
     # Add static edges
     graph.add_edge("get_transcript_local", "summarize")
     graph.add_edge("summarize", "human_validate") 
+    graph.add_edge("edit", "human_validate")
 
     # Add conditional edges
     graph.add_conditional_edges(
