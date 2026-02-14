@@ -1,7 +1,7 @@
 # /api/chat (Gemini chat)
 from flask import Blueprint, request, jsonify
 from services.gemini import run_chat
-from routes.transcript import add_message, save_transcript
+from routes.transcript import add_message, save_transcript, sessions
 
 chat_bp = Blueprint("chat", __name__)
 
@@ -17,7 +17,7 @@ def chat():
 
     add_message(session_id, "user", user_query)
 
-    response = run_chat(user_query)
+    response = run_chat(user_query, sessions[session_id])
     add_message(session_id, "bot", response)
 
     return jsonify({"response": response})

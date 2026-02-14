@@ -13,6 +13,7 @@ sessions = defaultdict(list)
 
 def add_message(session_id: str, role: str, message: str):
     """
+    Append message to sessions dictionary.
     Args:
         session_id:
         role: either "user" or "bot"

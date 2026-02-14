@@ -18,14 +18,15 @@ def read_system_prompt(filepath):
 system_prompt = read_system_prompt("backend/prompts/system.txt")
 
 prompt = ChatPromptTemplate.from_messages([
-    ("system", f"{system_prompt}"),
+    ("system", f"{system_prompt}, previous messages {{session_history}}"),
     ("user", "{message}")
 ])
 
 chain = prompt | llm
 
-def run_chat(user_message: str) -> str:
-    result = chain.invoke({"message": user_message}).content
+def run_chat(user_message: str, session_history: str) -> str:
+    result = chain.invoke({"message": user_message, 
+                           "session_history": session_history}).content
     # print(f"[DEBUG] Full Result: {result}") 
 
     # Sometimes it returns a list of json (even though I tried to specify
