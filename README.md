@@ -40,6 +40,25 @@ pip install -r requirements.txt
 - Langchain-Google-GenAI - Gemini API integration
 - python-dotenv - Environment variable management
 
+### Frontend Setup
+
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Install dependencies
+npm install
+
+# (Optional) Install Tailwind CSS and Vite plugin if not already installed
+npm install -D tailwindcss @tailwindcss/vite
+```
+
+**Frontend Dependencies:**
+- React - UI library
+- Vite - Build tool and dev server
+- Tailwind CSS - Utility-first CSS framework
+- TypeScript - Type-safe JavaScript
+
 ## Running the Application
 
 ### 0. Activate virtual environment
@@ -54,14 +73,32 @@ python app.py
 # Backend runs on http://localhost:8000
 ```
 
-### 2. Open the Frontend
+### 2. Start the Frontend Dev Server
 
-Simply open `frontend/index.html` in your web browser. You can do this by:
-- Double-clicking the file in Finder, or
-- Right-clicking the file and selecting "Open with" > your preferred browser, or
-- Using the command: `open frontend/index.html`
+```bash
+cd frontend
+npm run dev
+# Frontend dev server runs on http://localhost:5173 (or similar)
+```
 
-The frontend will communicate with the backend server running on `http://localhost:8000`.
+Open your browser and navigate to the URL displayed in the terminal (typically `http://localhost:5173`). The frontend will automatically communicate with the backend server running on `http://localhost:8000`.
+
+### 3. Build Frontend for Production
+
+```bash
+cd frontend
+npm run build
+# Creates optimized build in dist/ directory
+```
+
+### Available npm Scripts
+
+```bash
+npm run dev      # Start development server with hot reload
+npm run build    # Create production build
+npm run preview  # Preview production build locally
+npm run lint     # Run linter (if configured)
+```
 
 ## API Endpoints
 
