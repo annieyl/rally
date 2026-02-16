@@ -17,8 +17,17 @@ export function ChatBubble({ sender, text, timestamp }: ChatBubbleProps) {
               : 'bg-indigo-600 text-white'
           }`}
         >
-          <p className="text-sm leading-relaxed">{text}</p>
+          {isAI ? (
+            <div 
+              className="text-sm leading-relaxed prose prose-indigo prose-sm max-w-none"
+              dangerouslySetInnerHTML={{ __html: text }} 
+            />
+          ) : (
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">{text}</p>
+          )}
         </div>
+
+
         <div className={`flex items-center gap-2 mt-1 px-2 ${isAI ? '' : 'justify-end'}`}>
           <span className="text-xs text-gray-400">{timestamp}</span>
         </div>
