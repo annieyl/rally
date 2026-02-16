@@ -15,7 +15,7 @@ def read_system_prompt(filepath):
         text = f.read()
     return text
 
-system_prompt = read_system_prompt("backend/prompts/system.txt")
+system_prompt = read_system_prompt("./prompts/system.txt")
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", f"{system_prompt}, previous messages {{session_history}}"),
