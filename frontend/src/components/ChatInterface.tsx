@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { Send, Mic, CheckCircle } from 'lucide-react';
 import { Card } from './ui/Card';
@@ -6,6 +6,7 @@ import { StatusBadge } from './ui/StatusBadge';
 import { ChatBubble } from './ui/ChatBubble';
 import { PrimaryButton } from './ui/PrimaryButton';
 import { SecondaryButton } from './ui/SecondaryButton';
+import { uploadTranscript, getTranscript, fetchSessionDetail } from '../api/transcript.ts';
 //markdwon
 import { marked } from 'marked';
 
@@ -34,6 +35,8 @@ export function ChatInterface() {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const hasUploadedRef = useRef(false);
+  const isUploadingRef = useRef(false);
 
   const isNewSession = id === 'new';
   const status = isNewSession ? 'active' : 'completed';
@@ -51,9 +54,66 @@ export function ChatInterface() {
       }]);
     } else {
       setSessionId(id || null);
-      //uhhhhh probably fetch existing context/transcript here
+      // Load existing session transcript
+      if (id) {
+        const loadSessionHistory = async () => {
+          try {
+            const sessionData = await fetchSessionDetail(id);
+            if (sessionData && sessionData.transcript_url) {
+              const transcript = await getTranscript(sessionData.transcript_url);
+              // Convert transcript to Message format
+              const loadedMessages = transcript.map((msg, idx) => ({
+                id: idx,
+                sender: (msg.role === 'bot' ? 'ai' : 'client') as 'ai' | 'client',
+                text: msg.message,
+                timestamp: `${String(Math.floor(idx / 2) + 1).padStart(2, '0')}:${String((idx * 5) % 60).padStart(2, '0')} ${idx % 2 === 0 ? 'AM' : 'PM'}`
+              }));
+              setMessages(loadedMessages);
+            }
+          } catch (error) {
+            console.error('Failed to load session history:', error);
+          }
+        };
+        loadSessionHistory();
+      }
     }
   }, [id, isNewSession]);
+
+  const uploadSessionIfNeeded = useCallback(async () => {
+    if (!sessionId || hasUploadedRef.current || isUploadingRef.current) return;
+    if (messages.length === 0) return;
+
+    isUploadingRef.current = true;
+    try {
+      await uploadTranscript(sessionId);
+      hasUploadedRef.current = true;
+    } catch (error) {
+      console.error('Upload Error:', error);
+    } finally {
+      isUploadingRef.current = false;
+    }
+  }, [messages.length, sessionId]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        void uploadSessionIfNeeded();
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      void uploadSessionIfNeeded();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      void uploadSessionIfNeeded();
+    };
+  }, [uploadSessionIfNeeded]);
 
 
   const handleSend = async () => {
@@ -96,6 +156,15 @@ export function ChatInterface() {
       };
 
       setMessages((prev) => [...prev, aiMessage]);
+      
+      // Auto-save transcript after each response
+      if (sessionId) {
+        try {
+          await uploadTranscript(sessionId);
+        } catch (error) {
+          console.error('Auto-save failed:', error);
+        }
+      }
     } catch (error) {
       console.error("Chat Error:", error);
     } finally {
@@ -105,9 +174,9 @@ export function ChatInterface() {
 
   const handleComplete = async () => {
     try {
-      await fetch(`http://127.0.0.1:8000/api/transcript/save/${sessionId}`, {
-        method: "POST"
-      });
+      if (sessionId) {
+        await uploadTranscript(sessionId);
+      }
       navigate(`/transcript/${sessionId}`);
     } catch (error) {
       console.error("Save Error:", error);
@@ -126,7 +195,7 @@ export function ChatInterface() {
             </h1>
             <div className="flex items-center gap-2">
               <StatusBadge status={status} />
-              <span className="text-sm text-gray-500">Session #{id === 'new' ? '248' : id}</span>
+              <span className="text-sm text-gray-500">Session #{sessionId}</span>
             </div>
           </div>
           {status === 'completed' && (
