@@ -25,7 +25,3 @@ CREATE INDEX idx_sessions_created_at ON sessions(created_at DESC);
 -- Enable RLS (Row Level Security)
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
 
--- Optional: Create policies for RLS (adjust based on your auth setup)
--- CREATE POLICY "Users can view their own sessions"
--- ON sessions FOR SELECT
--- USING (auth.uid()::text = user_id OR user_id IS NULL);

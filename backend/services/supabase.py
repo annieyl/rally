@@ -32,7 +32,7 @@ def upload_transcript_to_storage(session_id: str, transcript: list) -> str:
         response = supabase.storage.from_("transcripts").upload(
             file_name,
             file_content.encode('utf-8'),
-            {"content-type": "application/json"}
+            {"content-type": "application/json", "upsert": "true"}
         )
         
         # Get public URL
