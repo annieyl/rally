@@ -42,6 +42,7 @@ If the user already has a project idea in mind, and the project the user has in 
 - What are our actual capabilities?
 - What existing solutions exist? Can we leverage any details of existing solutions? If an existing solution exists, does this project need to exist?
 - What existing libraries or frameworks or tools can we leverage?
+- What will the tech stack include?
 
 ### Logistics 
 - Assumptions/risk factors: what are we assuming about the problem statement? What might be some risks we should be wary of?
