@@ -1,11 +1,11 @@
 # In-memory storage for chat transcriptions
-# Then we'll upload to Supabase
-# Maybe we can turn this into a class later, just keeping it simple for now
+# Upload to Supabase when session ends
 
 import uuid
 from collections import defaultdict
 import os
 import json
+from services.supabase import upload_transcript_to_storage, save_session_to_db
 
 # Global dict to store all sessions (for now)
 # {"123": [{"role": "user", "message": "Hi"}, {"role": "bot", "message": "Hi"}]}
@@ -25,10 +25,15 @@ def add_message(session_id: str, role: str, message: str):
     # Append new message dictionary
     message_dictionary = {"role": role, "message": message}
     sessions[session_id].append(message_dictionary)
+    
 
+    
     # print(f"[DEBUG] Added message {message_dictionary} to session {session_id}")
 
 def save_transcript(session_id: str):
+    if session_id not in sessions:
+        print(f"[Warning] Session {session_id} not found")
+        return {"error": "Session not found"}
     transcript = sessions[session_id] 
     # print(f"[DEBUG] Saving transcript, here are all session transcripts {sessions}")
     os.makedirs("backend/transcripts", exist_ok=True)  # Create folder if needed
