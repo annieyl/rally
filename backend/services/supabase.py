@@ -65,7 +65,7 @@ def save_session_to_db(session_id: str, transcript_url: str, user_id: str = None
             "ended_at": datetime.utcnow().isoformat()
         }
         
-        response = supabase.table("sessions").insert(session_data).execute()
+        response = supabase.table("sessions").upsert(session_data).execute()
         print(f"[DEBUG] Saved session {session_id} to database")
         return response.data[0] if response.data else None
     
