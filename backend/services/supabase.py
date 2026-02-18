@@ -25,6 +25,11 @@ def upload_transcript_to_storage(session_id: str, transcript: list) -> str:
         Public URL of uploaded transcript
     """
     try:
+
+        # First, pull existing transcript (if it exists)
+        # Check DB to see if record with that session ID exists
+        
+
         file_name = f"transcripts/{session_id}.json"
         file_content = json.dumps(transcript, indent=2)
         
