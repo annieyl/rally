@@ -74,7 +74,7 @@ def upload_transcript_to_storage(session_id: str, transcript: list) -> Tuple[str
         # Get public URL
         public_url = supabase.storage.from_("transcripts").get_public_url(file_name)
         print(f"[DEBUG] Uploaded transcript to: {public_url}")
-        return public_url, exists, row
+        return exists, public_url, row
     
     except Exception as e:
         print(f"[ERROR] Failed to upload transcript: {e}")
