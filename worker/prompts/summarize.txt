@@ -1,6 +1,22 @@
 You are given a document that is a conversation between a product manager and a client. 
 
 Please summarize the contents of this document into a few paragraphs with the following headings:
-- High level goals / business objectives
-- Requirements and constraints
-- Technical features
+
+- High-level goals/business objectives
+    - Problem they are trying to solve
+        - Specific situations they anticipate
+    - Concrete description of project 
+    - Stakeholders
+- Functional & non-functional capabilities/features
+    - Each feature + how it addresses the problem + "need" vs. "nice-to-have"
+    - How each feature will be implemented, technologies involved
+- Technical considerations
+    - Resource plan
+    - Maintenance
+    - Tools/frameworks
+    - Tech stack
+- Requirements/constraints 
+    - Budget, scale, scope, etc.
+- Teams/team members
+- Project assumptions 
+- Project deliverables
