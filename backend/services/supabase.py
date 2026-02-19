@@ -34,7 +34,7 @@ def upload_transcript_to_storage(session_id: str, transcript: list) -> Tuple[str
 
         # Check DB to see if record with that session ID exists
         row = get_session(session_id)
-        print(f"[DEBUG] upload_transcript_to_storage: row data is {row}")
+        # print(f"[DEBUG] upload_transcript_to_storage: row data is {row}")
 
         # Var to hold existing content
         content = ""
@@ -62,7 +62,7 @@ def upload_transcript_to_storage(session_id: str, transcript: list) -> Tuple[str
         
         combined_json = existing_json + transcript
         combined = json.dumps(combined_json, indent=2)
-        print(combined)
+        # print(combined)
         
         # Upload to storage bucket named 'transcripts'
         response = supabase.storage.from_("transcripts").upload(
