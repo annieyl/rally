@@ -6,4 +6,4 @@ dist/
 .venv
 backend/transcripts/
 worker/summaries
-frontend/.vite/
+.vite
