@@ -96,20 +96,14 @@ def save_session_to_db(session_id: str, transcript_url: str, user_id: str = None
         Inserted session record
     """
     try:
-        session_data = (
-            supabase.table('sessions')
-            .eq("session_id", session_id)
-            .maybe_single()
-            .execute()
-        )
-        if not session_data:
-            session_data = {
-                "session_id": session_id,
-                "transcript_url": transcript_url,
-                "user_id": user_id,
-                "created_at": datetime.utcnow().isoformat(),
-                "ended_at": datetime.utcnow().isoformat()
-            }
+
+        session_data = {
+            "session_id": session_id,
+            "transcript_url": transcript_url,
+            "user_id": user_id,
+            "created_at": datetime.utcnow().isoformat(),
+            "ended_at": datetime.utcnow().isoformat()
+        }
         
         response = supabase.table("sessions").insert(session_data).execute()
         print(f"[DEBUG] Saved session {session_id} to database")
