@@ -14,7 +14,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def upload_transcript_to_storage(session_id: str, transcript: list) -> Tuple[str, bool]:
+def upload_transcript_to_storage(session_id: str, transcript: list) -> Tuple[str, bool, str]:
     """
     Upload transcript JSON to Supabase Storage
     
@@ -25,6 +25,7 @@ def upload_transcript_to_storage(session_id: str, transcript: list) -> Tuple[str
     Returns:
         Public URL of uploaded transcript
         Bool of if it already exists
+        Session data (from DB)
     """
     try:
 
@@ -32,13 +33,8 @@ def upload_transcript_to_storage(session_id: str, transcript: list) -> Tuple[str
         exists = False
 
         # Check DB to see if record with that session ID exists
-        row = (
-            supabase.table('sessions')
-            .select("session_id")
-            .eq("session_id", session_id)
-            .maybe_single()
-            .execute()
-        )
+        row = get_session(session_id)
+        print(f"[DEBUG] upload_transcript_to_storage: row data is {row}")
 
         # Var to hold existing content
         content = ""
@@ -47,7 +43,7 @@ def upload_transcript_to_storage(session_id: str, transcript: list) -> Tuple[str
         # If so, we'll pull the existing transcript and append to it
         if row:
             exists = True
-            print(f"[DEBUG] Uploading transcript; existing one found in DB {row.data}")
+            print(f"[DEBUG] Uploading transcript; existing one found in DB {row}")
             print(f"[DEBUG] Existing transcript is at {file_name}")
             try: 
                 existing = supabase.storage.from_("transcripts").download(file_name)
@@ -66,6 +62,7 @@ def upload_transcript_to_storage(session_id: str, transcript: list) -> Tuple[str
         
         combined_json = existing_json + transcript
         combined = json.dumps(combined_json, indent=2)
+        print(combined)
         
         # Upload to storage bucket named 'transcripts'
         response = supabase.storage.from_("transcripts").upload(
@@ -77,14 +74,28 @@ def upload_transcript_to_storage(session_id: str, transcript: list) -> Tuple[str
         # Get public URL
         public_url = supabase.storage.from_("transcripts").get_public_url(file_name)
         print(f"[DEBUG] Uploaded transcript to: {public_url}")
-        return public_url, exists
+        return public_url, exists, row
     
     except Exception as e:
         print(f"[ERROR] Failed to upload transcript: {e}")
         raise
 
-def get_session_from_db(session_id: str) -> dict:
-    pass 
+# def get_session_from_db(session_id: str) -> dict:
+#     try:
+#         row = (
+#             supabase.table('sessions')
+#             .eq("session_id", session_id)
+#             .maybe_single()
+#             .execute()
+#         )
+#         if not row:
+#             return None
+        
+#         print(f"[DEBUG] get_session_from_db: Found row {row.data}")
+#         return row
+    
+#     except Exception:
+#         return None
 
 def save_session_to_db(session_id: str, transcript_url: str, user_id: str = None) -> dict:
     """

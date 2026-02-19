@@ -39,7 +39,7 @@ def save_transcript(session_id: str, user_id: str = None):
 
     try:
         # Upload transcript JSON to Supabase Storage
-        already_exists, transcript_url = upload_transcript_to_storage(session_id, transcript)
+        already_exists, transcript_url, session_data = upload_transcript_to_storage(session_id, transcript)
         if not already_exists:
             session_data = save_session_to_db(session_id, transcript_url, user_id=user_id)
             # FIX THIS (if we don't get to this if clause) - just use get_session_from_db
