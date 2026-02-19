@@ -80,23 +80,6 @@ def upload_transcript_to_storage(session_id: str, transcript: list) -> Tuple[str
         print(f"[ERROR] Failed to upload transcript: {e}")
         raise
 
-# def get_session_from_db(session_id: str) -> dict:
-#     try:
-#         row = (
-#             supabase.table('sessions')
-#             .eq("session_id", session_id)
-#             .maybe_single()
-#             .execute()
-#         )
-#         if not row:
-#             return None
-        
-#         print(f"[DEBUG] get_session_from_db: Found row {row.data}")
-#         return row
-    
-#     except Exception:
-#         return None
-
 def save_session_to_db(session_id: str, transcript_url: str, user_id: str = None) -> dict:
     """
     Save session metadata to Postgres database
