@@ -3,6 +3,7 @@ import os
 import json
 from datetime import datetime
 from supabase import create_client, Client
+from typing import Tuple
 
 # Initialize Supabase client
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -13,7 +14,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def upload_transcript_to_storage(session_id: str, transcript: list) -> str:
+def upload_transcript_to_storage(session_id: str, transcript: list) -> Tuple[str, bool]:
     """
     Upload transcript JSON to Supabase Storage
     
@@ -23,27 +24,60 @@ def upload_transcript_to_storage(session_id: str, transcript: list) -> str:
     
     Returns:
         Public URL of uploaded transcript
+        Bool of if it already exists
     """
     try:
 
-        # First, pull existing transcript (if it exists)
-        # Check DB to see if record with that session ID exists
-        
+        # Flag
+        exists = False
 
+        # Check DB to see if record with that session ID exists
+        row = (
+            supabase.table('sessions')
+            .select("session_id")
+            .eq("session_id", session_id)
+            .maybe_single()
+            .execute()
+        )
+
+        # Var to hold existing content
+        content = ""
         file_name = f"transcripts/{session_id}.json"
-        file_content = json.dumps(transcript, indent=2)
+        
+        # If so, we'll pull the existing transcript and append to it
+        if row:
+            exists = True
+            print(f"[DEBUG] Uploading transcript; existing one found in DB {row.data}")
+            print(f"[DEBUG] Existing transcript is at {file_name}")
+            try: 
+                existing = supabase.storage.from_("transcripts").download(file_name)
+                content = existing.decode("utf-8")
+            except Exception:
+                # If something goes wrong, just make it empty
+                content = ""
+
+        # Otherwise, we write to a new transcript
+
+        # Generate new file content
+        if content:
+            existing_json = json.loads(content)
+        else:
+            existing_json = []
+        
+        combined_json = existing_json + transcript
+        combined = json.dumps(combined_json, indent=2)
         
         # Upload to storage bucket named 'transcripts'
         response = supabase.storage.from_("transcripts").upload(
             file_name,
-            file_content.encode('utf-8'),
+            combined.encode('utf-8'),
             {"content-type": "application/json", "upsert": "true"}
         )
         
         # Get public URL
         public_url = supabase.storage.from_("transcripts").get_public_url(file_name)
         print(f"[DEBUG] Uploaded transcript to: {public_url}")
-        return public_url
+        return public_url, exists
     
     except Exception as e:
         print(f"[ERROR] Failed to upload transcript: {e}")
@@ -62,15 +96,22 @@ def save_session_to_db(session_id: str, transcript_url: str, user_id: str = None
         Inserted session record
     """
     try:
-        session_data = {
-            "session_id": session_id,
-            "transcript_url": transcript_url,
-            "user_id": user_id,
-            "created_at": datetime.utcnow().isoformat(),
-            "ended_at": datetime.utcnow().isoformat()
-        }
+        session_data = (
+            supabase.table('sessions')
+            .eq("session_id", session_id)
+            .maybe_single()
+            .execute()
+        )
+        if not session_data:
+            session_data = {
+                "session_id": session_id,
+                "transcript_url": transcript_url,
+                "user_id": user_id,
+                "created_at": datetime.utcnow().isoformat(),
+                "ended_at": datetime.utcnow().isoformat()
+            }
         
-        response = supabase.table("sessions").upsert(session_data).execute()
+        response = supabase.table("sessions").insert(session_data).execute()
         print(f"[DEBUG] Saved session {session_id} to database")
         return response.data[0] if response.data else None
     
