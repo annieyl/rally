@@ -1,7 +1,7 @@
 # /api/chat (Gemini chat)
 from flask import Blueprint, request, jsonify
 from services.gemini import run_chat
-from routes.transcript import add_message, save_transcript, sessions
+from routes.transcript import add_message, save_transcript
 from services.supabase import list_sessions, get_session
 
 chat_bp = Blueprint("chat", __name__)
@@ -16,9 +16,9 @@ def chat():
     if not user_query:
         return jsonify({"response": "Please enter your question."})
 
-    add_message(session_id, "user", user_query)
+    transcript = add_message(session_id, "user", user_query)
 
-    response = run_chat(user_query, sessions[session_id])
+    response = run_chat(user_query, transcript)
     add_message(session_id, "bot", response)
 
     return jsonify({"response": response})

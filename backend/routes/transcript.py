@@ -5,63 +5,93 @@ import uuid
 from collections import defaultdict
 import os
 import json
-from services.supabase import upload_transcript_to_storage, save_session_to_db
+from services.supabase import upload_transcript_to_storage, save_session_to_db, get_session
 
-# Global dict to store all sessions (for now)
-# {"123": [{"role": "user", "message": "Hi"}, {"role": "bot", "message": "Hi"}]}
-sessions = defaultdict(list)
 
-def add_message(session_id: str, role: str, message: str):
+def get_transcript(session_id: str) -> list:
+    """
+    Fetch transcript from supabase.
+    Args:
+        session_id
+    Returns:
+        list containing transcript; empty if not there
+    """
+    from services.supabase import supabase  # local import to avoid circular deps
+
+    session = get_session(session_id)
+    if not session:
+        return []
+
+    file_name = f"transcripts/{session_id}.json"
+    try:
+        existing = supabase.storage.from_("transcripts").download(file_name)
+        return json.loads(existing.decode("utf-8"))
+    except Exception as e:
+        print(f"[WARNING] Could not load transcript for {session_id}: {e}")
+        return []
+
+def add_message(session_id: str, role: str, message: str) -> list:
     """
     Append message to sessions dictionary.
     Args:
         session_id:
         role: either "user" or "bot"
         message: 
+    Returns:
+        Full updated transcript list
     """
-    # Check if session exists, if not, warn
-    if not session_id in sessions:
-        print("[WARNING] Session ID not found, this is a new session.")
+    transcript = get_transcript(session_id)
+    transcript.append({"role": role, "message": message})
 
-    # Append new message dictionary
-    message_dictionary = {"role": role, "message": message}
-    sessions[session_id].append(message_dictionary)
+    already_exists, transcript_url, _ = upload_transcript_to_storage(session_id, [])
+    overwrite_transcript(session_id, transcript)
     
+    # Create the DB record on first message
+    if not already_exists:
+        file_name = f"transcripts/{session_id}.json"
+        from services.supabase import supabase
+        public_url = supabase.storage.from_("transcripts").get_public_url(file_name)
+        save_session_to_db(session_id, public_url)
 
-    
-    # print(f"[DEBUG] Added message {message_dictionary} to session {session_id}")
+    return transcript
 
 def save_transcript(session_id: str, user_id: str = None):
-    if session_id not in sessions:
-        print(f"[Warning] Session {session_id} not found")
-        return {"error": "Session not found"}
-    transcript = sessions[session_id] 
+    from services.supabase import supabase
 
-    try:
-        # Upload transcript JSON to Supabase Storage
-        transcript_url = upload_transcript_to_storage(session_id, transcript)
-        session_data = save_session_to_db(session_id, transcript_url, user_id=user_id)
+    file_name = f"transcripts/{session_id}.json"
+    transcript_url = supabase.storage.from_("transcripts").get_public_url(file_name)
 
-        # Keep session in memory - don't delete it
-        # This allows continued chatting and periodic saves
-        print(f"[DEBUG] Transcript saved for session {session_id}, kept in memory for future messages")
-        
-        return  {
-            "session_id": session_id,
-            "transcript_url": transcript_url,
-            "session_data": session_data
-        }
-    
-    except Exception as e:
-        print(f"[ERROR] Failed to save transcript: {e}")
-        return {"error": "Failed to save transcript"}
+    session = get_session(session_id)
+    if not session:
+        session = save_session_to_db(session_id, transcript_url, user_id=user_id)
 
+    return {
+        "session_id": session_id,
+        "transcript_url": transcript_url,
+        "session_data": session,
+    }
+
+def overwrite_transcript(session_id: str, transcript: list):
+    from services.supabase import supabase
+
+    file_name = f"transcripts/{session_id}.json"
+    content = json.dumps(transcript, indent=2).encode("utf-8")
+    supabase.storage.from_("transcripts").upload(
+        file_name,
+        content,
+        {"content-type": "application/json", "upsert": "true"},
+    )
+    print(f"[DEBUG] Transcript overwritten for session {session_id}")
 
 # TODO: delete session, etc. 
 
 def delete_session(session_id: str):
-    if session_id in sessions:
-        del sessions[session_id]
-        print(f"[DEBUG] Deleted session {session_id}")
-    else:
-        print(f"[WARNING] Tried to delete non-existent session {session_id}")
+    # TODO: Also delete from DB
+    from services.supabase import supabase
+
+    file_name = f"transcripts/{session_id}.json"
+    try:
+        supabase.storage.from_("transcripts").remove([file_name])
+        print(f"[DEBUG] Deleted transcript file for session {session_id}")
+    except Exception as e:
+        print(f"[WARNING] Could not delete transcript file: {e}")
