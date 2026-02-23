@@ -3,6 +3,7 @@ import os
 import json
 from datetime import datetime
 from supabase import create_client, Client
+from typing import Tuple
 
 # Initialize Supabase client
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -13,7 +14,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def upload_transcript_to_storage(session_id: str, transcript: list) -> str:
+def upload_transcript_to_storage(session_id: str, transcript: list) -> Tuple[str, bool, str]:
     """
     Upload transcript JSON to Supabase Storage
     
@@ -23,22 +24,57 @@ def upload_transcript_to_storage(session_id: str, transcript: list) -> str:
     
     Returns:
         Public URL of uploaded transcript
+        Bool of if it already exists
+        Session data (from DB)
     """
     try:
+
+        # Flag
+        exists = False
+
+        # Check DB to see if record with that session ID exists
+        row = get_session(session_id)
+        # print(f"[DEBUG] upload_transcript_to_storage: row data is {row}")
+
+        # Var to hold existing content
+        content = ""
         file_name = f"transcripts/{session_id}.json"
-        file_content = json.dumps(transcript, indent=2)
+        
+        # If so, we'll pull the existing transcript and append to it
+        if row:
+            exists = True
+            print(f"[DEBUG] Uploading transcript; existing one found in DB {row}")
+            print(f"[DEBUG] Existing transcript is at {file_name}")
+            try: 
+                existing = supabase.storage.from_("transcripts").download(file_name)
+                content = existing.decode("utf-8")
+            except Exception:
+                # If something goes wrong, just make it empty
+                content = ""
+
+        # Otherwise, we write to a new transcript
+
+        # Generate new file content
+        if content:
+            existing_json = json.loads(content)
+        else:
+            existing_json = []
+        
+        combined_json = existing_json + transcript
+        combined = json.dumps(combined_json, indent=2)
+        # print(combined)
         
         # Upload to storage bucket named 'transcripts'
         response = supabase.storage.from_("transcripts").upload(
             file_name,
-            file_content.encode('utf-8'),
+            combined.encode('utf-8'),
             {"content-type": "application/json", "upsert": "true"}
         )
         
         # Get public URL
         public_url = supabase.storage.from_("transcripts").get_public_url(file_name)
         print(f"[DEBUG] Uploaded transcript to: {public_url}")
-        return public_url
+        return exists, public_url, row
     
     except Exception as e:
         print(f"[ERROR] Failed to upload transcript: {e}")
@@ -57,6 +93,7 @@ def save_session_to_db(session_id: str, transcript_url: str, user_id: str = None
         Inserted session record
     """
     try:
+
         session_data = {
             "session_id": session_id,
             "transcript_url": transcript_url,
