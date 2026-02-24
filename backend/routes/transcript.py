@@ -5,7 +5,7 @@ import uuid
 from collections import defaultdict
 import os
 import json
-from services.supabase import upload_transcript_to_storage, save_session_to_db, get_session
+from services.supabase_client import upload_transcript_to_storage, save_session_to_db, get_session
 
 
 def get_transcript(session_id: str) -> list:
@@ -16,7 +16,7 @@ def get_transcript(session_id: str) -> list:
     Returns:
         list containing transcript; empty if not there
     """
-    from services.supabase import supabase  # local import to avoid circular deps
+    from services.supabase_client import supabase  # local import to avoid circular deps
 
     session = get_session(session_id)
     if not session:
@@ -44,19 +44,21 @@ def add_message(session_id: str, role: str, message: str) -> list:
     transcript.append({"role": role, "message": message})
 
     already_exists, transcript_url, _ = upload_transcript_to_storage(session_id, [])
+    print(f"[DEBUG] Already exists? {already_exists}")
     overwrite_transcript(session_id, transcript)
     
     # Create the DB record on first message
     if not already_exists:
+        print(f"[DEBUG] Does not already exist")
         file_name = f"transcripts/{session_id}.json"
-        from services.supabase import supabase
+        from services.supabase_client import supabase
         public_url = supabase.storage.from_("transcripts").get_public_url(file_name)
         save_session_to_db(session_id, public_url)
 
     return transcript
 
 def save_transcript(session_id: str, user_id: str = None):
-    from services.supabase import supabase
+    from services.supabase_client import supabase
 
     file_name = f"transcripts/{session_id}.json"
     transcript_url = supabase.storage.from_("transcripts").get_public_url(file_name)
@@ -72,7 +74,7 @@ def save_transcript(session_id: str, user_id: str = None):
     }
 
 def overwrite_transcript(session_id: str, transcript: list):
-    from services.supabase import supabase
+    from services.supabase_client import supabase
 
     file_name = f"transcripts/{session_id}.json"
     content = json.dumps(transcript, indent=2).encode("utf-8")
@@ -87,7 +89,7 @@ def overwrite_transcript(session_id: str, transcript: list):
 
 def delete_session(session_id: str):
     # TODO: Also delete from DB
-    from services.supabase import supabase
+    from services.supabase_client import supabase
 
     file_name = f"transcripts/{session_id}.json"
     try:
