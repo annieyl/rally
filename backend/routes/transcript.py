@@ -16,7 +16,7 @@ def get_transcript(session_id: str) -> list:
     Returns:
         list containing transcript; empty if not there
     """
-    from backend.services.supabase_client import supabase  # local import to avoid circular deps
+    from services.supabase_client import supabase  # local import to avoid circular deps
 
     session = get_session(session_id)
     if not session:
@@ -49,14 +49,14 @@ def add_message(session_id: str, role: str, message: str) -> list:
     # Create the DB record on first message
     if not already_exists:
         file_name = f"transcripts/{session_id}.json"
-        from backend.services.supabase_client import supabase
+        from services.supabase_client import supabase
         public_url = supabase.storage.from_("transcripts").get_public_url(file_name)
         save_session_to_db(session_id, public_url)
 
     return transcript
 
 def save_transcript(session_id: str, user_id: str = None):
-    from backend.services.supabase_client import supabase
+    from services.supabase_client import supabase
 
     file_name = f"transcripts/{session_id}.json"
     transcript_url = supabase.storage.from_("transcripts").get_public_url(file_name)
@@ -72,7 +72,7 @@ def save_transcript(session_id: str, user_id: str = None):
     }
 
 def overwrite_transcript(session_id: str, transcript: list):
-    from backend.services.supabase_client import supabase
+    from services.supabase_client import supabase
 
     file_name = f"transcripts/{session_id}.json"
     content = json.dumps(transcript, indent=2).encode("utf-8")
@@ -87,7 +87,7 @@ def overwrite_transcript(session_id: str, transcript: list):
 
 def delete_session(session_id: str):
     # TODO: Also delete from DB
-    from backend.services.supabase_client import supabase
+    from services.supabase_client import supabase
 
     file_name = f"transcripts/{session_id}.json"
     try:
