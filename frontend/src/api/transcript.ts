@@ -29,6 +29,19 @@ interface Session {
   ended_at: string;
 }
 
+interface ChatMessage {
+  id: number;
+  session_id: string;
+  message_id: string;
+  sender: 'ai' | 'client';
+  text?: string;
+  options?: string[];
+  allow_other: boolean;
+  selected_option?: string;
+  custom_response?: string;
+  timestamp: string;
+}
+
 /**
  * Upload transcript to Supabase and save session to database
  * @param sessionId - Session identifier
@@ -117,5 +130,61 @@ export async function fetchSessionDetail(sessionId: string): Promise<Session | n
   } catch (error) {
     console.error("[ERROR] Failed to fetch session:", error);
     return null;
+  }
+}
+
+/**
+ * Save a chat message with selection state
+ * @param sessionId - Session identifier
+ * @param message - Chat message with UI state
+ * @returns Saved message data
+ */
+export async function saveChatMessage(
+  sessionId: string,
+  message: Omit<ChatMessage, 'id' | 'session_id' | 'timestamp'>
+): Promise<ChatMessage> {
+  try {
+    const response = await fetch(`${API_BASE}/chat/message`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        ...message,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to save message: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log("[DEBUG] Chat message saved:", data);
+    return data.message;
+  } catch (error) {
+    console.error("[ERROR] Failed to save chat message:", error);
+    throw error;
+  }
+}
+
+
+/**
+ * Fetch all chat messages for a session
+ * @param sessionId - Session identifier
+ * @returns Array of chat messages with UI state
+ */
+export async function fetchChatMessages(sessionId: string): Promise<ChatMessage[]> {
+  try {
+    const response = await fetch(`${API_BASE}/chat/messages/${sessionId}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch messages: ${response.statusText}`);
+    }
+    const data: ChatMessage[] = await response.json();
+    console.log("[DEBUG] Fetched chat messages:", data);
+    return data;
+  } catch (error) {
+    console.error("[ERROR] Failed to fetch chat messages:", error);
+    return [];
   }
 }

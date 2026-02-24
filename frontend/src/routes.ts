@@ -1,7 +1,7 @@
 import { createBrowserRouter } from "react-router";
 import { Layout } from "./components/Layout";
 import { Dashboard } from "./components/Dashboard";
-import { ChatInterface } from "./components/ChatInterface";
+import { ImprovedChatInterface } from "./components/ImprovedChatInterface";
 import { ChatSessions } from "./components/ChatSessions";
 import { Transcripts } from "./components/Transcripts";
 import { TranscriptDetail } from "./components/TranscriptDetail";
@@ -18,7 +18,8 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: Dashboard },
       { path: "sessions", Component: ChatSessions },
-      { path: "chat/:id", Component: ChatInterface },
+      { path: "chat/:id", Component: ImprovedChatInterface },
+      { path: "chat-form/:id", Component: ImprovedChatInterface },
       { path: "transcripts", Component: Transcripts },
       { path: "transcript/:id", Component: TranscriptDetail },
       { path: "transcript/:id/summary", Component: TranscriptSummary },
