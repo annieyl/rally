@@ -2,7 +2,7 @@
 from flask import Blueprint, request, jsonify
 from services.gemini import run_chat
 from routes.transcript import add_message, save_transcript
-from services.supabase import list_sessions, get_session
+from services.supabase import list_sessions, get_session, save_chat_message, get_chat_messages
 
 chat_bp = Blueprint("chat", __name__)
 
@@ -22,6 +22,57 @@ def chat():
     add_message(session_id, "bot", response)
 
     return jsonify({"response": response})
+
+@chat_bp.route("/chat/message", methods=["POST"])
+def save_message():
+    """
+    Save a chat message with selection state
+    """
+    data = request.get_json()
+    session_id = data.get("session_id")
+    message_id = data.get("message_id")
+    sender = data.get("sender")
+    text = data.get("text")
+    options = data.get("options")
+    allow_other = data.get("allow_other", False)
+    selected_option = data.get("selected_option")
+    custom_response = data.get("custom_response")
+    
+    if not session_id or not message_id:
+        return jsonify({"error": "session_id and message_id required"}), 400
+    
+    try:
+        message = save_chat_message(
+            session_id=session_id,
+            message_id=message_id,
+            sender=sender,
+            text=text,
+            options=options,
+            allow_other=allow_other,
+            selected_option=selected_option,
+            custom_response=custom_response
+        )
+        return jsonify({"success": True, "message": message}), 200
+    except Exception as e:
+        print(f"[ERROR] Failed to save message: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@chat_bp.route("/chat/messages/<session_id>", methods=["GET"])
+def get_messages(session_id):
+
+    """
+    Get all chat messages for a session with selection state
+    """
+    
+    try:
+        messages = get_chat_messages(session_id)
+        return jsonify(messages), 200
+
+
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch messages: {e}")
+        error_message = str(e)
+        return jsonify({"error": error_message}), 500
 
 @chat_bp.route("/transcript/upload", methods=["POST"])
 def upload_transcript():

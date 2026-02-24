@@ -119,6 +119,7 @@ def get_session(session_id: str) -> dict:
         print(f"[ERROR] Failed to get session: {e}")
         return None
 
+
 def list_sessions(user_id: str = None) -> list:
     """List all sessions, optionally filtered by user_id"""
     try:
@@ -129,4 +130,61 @@ def list_sessions(user_id: str = None) -> list:
         return response.data
     except Exception as e:
         print(f"[ERROR] Failed to list sessions: {e}")
+        return []
+        
+
+def save_chat_message(session_id: str, message_id: str, sender: str, text: str = None, 
+                     options: list = None, allow_other: bool = False, 
+                     selected_option: str = None, custom_response: str = None) -> dict:
+    """
+    Save a chat message with UI state to database
+    
+    Args:
+        session_id: Session identifier
+        message_id: Unique message identifier
+        sender: 'ai' or 'client'
+        text: Message text
+        options: List of options (for AI messages)
+        allow_other: Whether other input is allowed
+        selected_option: Which option was selected
+        custom_response: Custom text entered for 'Other'
+    
+    Returns:
+        Inserted message record
+    """
+    try:
+        message_data = {
+            "session_id": session_id,
+            "message_id": str(message_id),
+            "sender": sender,
+            "text": text,
+            "options": options,
+            "allow_other": allow_other,
+            "selected_option": selected_option,
+            "custom_response": custom_response
+        }
+        
+        response = supabase.table("chat_messages").upsert(message_data).execute()
+        print(f"[DEBUG] Saved chat message {message_id} for session {session_id}")
+        return response.data[0] if response.data else None
+    
+    except Exception as e:
+        print(f"[ERROR] Failed to save chat message: {e}")
+        raise
+
+def get_chat_messages(session_id: str) -> list:
+    """
+    Retrieve all chat messages for a session
+    
+    Args:
+        session_id: Session identifier
+    
+    Returns:
+        List of chat messages ordered by timestamp
+    """
+    try:
+        response = supabase.table("chat_messages").select("*").eq("session_id", session_id).order("timestamp", desc=False).execute()
+        return response.data if response.data else []
+    except Exception as e:
+        print(f"[ERROR] Failed to get chat messages: {e}")
         return []
