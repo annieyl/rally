@@ -44,10 +44,12 @@ def add_message(session_id: str, role: str, message: str) -> list:
     transcript.append({"role": role, "message": message})
 
     already_exists, transcript_url, _ = upload_transcript_to_storage(session_id, [])
+    print(f"[DEBUG] Already exists? {already_exists}")
     overwrite_transcript(session_id, transcript)
     
     # Create the DB record on first message
     if not already_exists:
+        print(f"[DEBUG] Does not already exist")
         file_name = f"transcripts/{session_id}.json"
         from services.supabase_client import supabase
         public_url = supabase.storage.from_("transcripts").get_public_url(file_name)
