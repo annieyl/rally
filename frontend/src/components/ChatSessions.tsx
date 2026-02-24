@@ -12,6 +12,7 @@ interface RealSession {
   transcript_url: string;
   created_at: string;
   ended_at: string;
+  title?: string;
 }
 
 // Mock sessions for fallback/examples
@@ -23,7 +24,6 @@ const mockSessions = [
 
 export function ChatSessions() {
   const [sessions, setSessions] = useState<RealSession[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,8 +34,6 @@ export function ChatSessions() {
       } catch (err) {
         console.error('Failed to load sessions:', err);
         setError('Failed to load sessions');
-      } finally {
-        setIsLoading(false);
       }
     };
     loadSessions();
@@ -64,7 +62,7 @@ export function ChatSessions() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900">Session {session.session_id}</h3>
+                      <h3 className="text-lg font-semibold text-gray-900">{session.title || `Session ${session.session_id}`}</h3>
                       <StatusBadge status="completed" />
                     </div>
                     <div className="flex items-center gap-4 text-sm text-gray-600">
