@@ -1,5 +1,6 @@
 # /api/chat (Gemini chat)
 from flask import Blueprint, request, jsonify
+import json
 from services.gemini import run_chat
 from routes.transcript import add_message, save_transcript
 from services.supabase import list_sessions, get_session, save_chat_message, get_chat_messages
@@ -19,9 +20,33 @@ def chat():
     transcript = add_message(session_id, "user", user_query)
 
     response = run_chat(user_query, transcript)
-    add_message(session_id, "bot", response)
+    parsed = None
+    response_text = response
+    input_type = "text"
+    options = []
+    allow_other = False
+    sections = []
 
-    return jsonify({"response": response})
+    try:
+        parsed = json.loads(response)
+        response_text = parsed.get("text", response_text)
+        input_type = parsed.get("inputType", input_type)
+        options = parsed.get("options", options) or []
+        allow_other = parsed.get("allowOther", allow_other)
+        sections = parsed.get("sections", []) or []
+    except Exception as e:
+        print(f"[DEBUG] Failed to parse JSON: {e}")
+        parsed = None
+
+    add_message(session_id, "bot", response_text)
+
+    return jsonify({
+        "response": response_text,
+        "input_type": input_type,
+        "options": options,
+        "allow_other": allow_other,
+        "sections": sections
+    })
 
 @chat_bp.route("/chat/message", methods=["POST"])
 def save_message():

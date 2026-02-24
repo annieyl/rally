@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 import os 
+import sys
 load_dotenv()
 
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -16,10 +17,36 @@ def read_system_prompt(filepath):
         text = f.read()
     return text
 
-system_prompt = read_system_prompt(f"{os.getcwd()}/prompts/system.txt")
+# Get the backend directory path
+backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+system_prompt = read_system_prompt(os.path.join(backend_dir, "prompts", "system.txt"))
+
+format_instructions = """
+Return ONLY valid JSON with these exact keys:
+- text: string (brief response or introduction)
+- inputType: "options", "text", or "mixed"
+- options: array of option strings (only for single-question options, leave empty for "mixed")
+- allowOther: boolean
+- sections: ONLY for inputType="mixed" - array of section objects
+
+For "mixed" inputType (Problem Definition survey):
+ALWAYS include BOTH text AND sections:
+- text: 2-5 sentence PM introduction with context
+- sections: [
+    {{'question': 'Question 1?', 'inputType': 'text', 'options': [], 'allowOther': false}},
+    {{'question': 'Question 2?', 'inputType': 'options', 'options': ['Option A', 'Option B', 'Other'], 'allowOther': true}}
+  ]
+
+Rules:
+1) For Problem Definition: ALWAYS use inputType="mixed" with BOTH text AND sections
+2) Text is displayed first, sections displayed below for user input
+3) Never skip the text field - always include PM insights
+4) Keep all text fields and sections in single response
+5) Output must be VALID JSON only
+"""
 
 prompt = ChatPromptTemplate.from_messages([
-    ("system", f"{system_prompt}, previous messages {{session_history}}"),
+    ("system", system_prompt + "\n\n" + format_instructions + "\n\nPrevious messages: {session_history}"),
     ("user", "{message}")
 ])
 
