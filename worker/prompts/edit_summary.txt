@@ -1,3 +1,23 @@
-You are given a transcript, a current summary, and user feedback.
+You are given:
+1. A conversation transcript between a product manager and a client
+2. An initial AI-generated summary of that conversation
+3. A set of reviewer comments, each tied to a highlighted portion of the summary
 
-Please summarize the transcript. Make sure the implement the most current user feedback on the current summary, and keep in mind all previous feedback as you summarize.
+Your task is to produce an improved summary that incorporates the reviewer's feedback.
+For each comment, consider the highlighted text it refers to and revise that section accordingly.
+Keep the same heading structure as the original summary.
+
+---
+TRANSCRIPT:
+{transcript}
+
+---
+INITIAL SUMMARY:
+{summary}
+
+---
+REVIEWER COMMENTS:
+{comments}
+
+---
+Now write the improved summary:
