@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 from langchain_google_genai import ChatGoogleGenerativeAI
 from services.supabase_client import supabase
 import json
@@ -30,7 +30,7 @@ Please summarize the contents of this document into a few paragraphs with the fo
 - Project deliverables
 """
 
-REGERENERATE_PROMPT = """You are given:
+REGENERATE_PROMPT = """You are given:
 1. A conversation transcript between a product manager and a client
 2. An initial AI-generated summary of that conversation
 3. A set of reviewer comments, each tied to a highlighted portion of the summary
@@ -112,42 +112,77 @@ def save_summary_iteration(session_id: str, iteration: int, summary_text: str, c
 @summarize_bp.route("/summarize/<session_id>", methods=["POST"])
 def summarize_transcript(session_id):
     """Generate initial summary from transcript"""
-    # 1. Fetch and format transcript from Supabase
-    try:
-        transcript_bytes = supabase.storage.from_("transcripts").download(
-            f"transcripts/{session_id}.json"
-        )
-        transcript_text = transcript_bytes.decode("utf-8")
-    except Exception as e:
-        return jsonify({"detail": f"Transcript not found for session {session_id}: {e}"}), 404
+    formatted, err = _fetch_and_format_transcript(session_id)
+    if err:
+        return err
+
+    full_prompt = f"{SUMMARIZE_PROMPT}\n\nTRANSCRIPT:\n{formatted}"
+    summary_text, err = _call_llm(full_prompt)
+    if err:
+        return err
 
     try:
-        messages = json.loads(transcript_text)
-        formatted = "\n".join(
-            f"{'AI' if m['role'] == 'bot' else 'Client'}: {m['message']}"
-            for m in messages
-        )
-    except Exception as e:
-        return jsonify({"detail": f"Failed to parse transcript: {e}"}), 500
-
-    # 2. Call Gemini
-    try:
-        llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", temperature=0.5)
-        response = llm.invoke([SUMMARIZE_PROMPT, formatted])
-        summary_text = response.content
-        if not isinstance(summary_text, str):
-            summary_text = summary_text[0]["text"]
-    except Exception as e:
-        return jsonify({"detail": f"LLM summarization failed: {e}"}), 500
-
-    # 4. Upload summary to Supabase
-    try:
-        supabase.storage.from_("transcripts").upload(
-            f"summaries/{session_id}.txt",
-            summary_text.encode("utf-8"),
-            {"content-type": "text/plain", "upsert": "true"},
-        )
+        _upload_summary(session_id, summary_text)
     except Exception as e:
         return jsonify({"detail": f"Failed to upload summary: {e}"}), 500
 
     return jsonify({"session_id": session_id, "summary": summary_text})
+
+@summarize_bp.route("/summarize/<session_id>/regenerate", methods=["POST"])
+def regenerate_summary(session_id):
+    """
+    Regenerate summary using the original summary + reviewer comments.
+
+    Expected request body:
+    {
+        "summary": "...the current summary text...",
+        "comments": [
+            {
+                "id": "abc123",
+                "highlightedText": "some text the user selected",
+                "comment": "This section should mention X"
+            },
+            ...
+        ]
+    }
+    """
+    body = request.get_json(silent=True) or {}
+    original_summary = body.get("summary", "").strip()
+    comments: list = body.get("comments", [])
+
+    if not original_summary:
+        return jsonify({"detail": "summary is required"}), 400
+    if not comments:
+        return jsonify({"detail": "No comments provided"}), 400
+
+    # Fetch transcript
+    formatted_transcript, err = _fetch_and_format_transcript(session_id)
+    if err:
+        return err
+
+    # Format comments for the prompt
+    formatted_comments = "\n".join(
+        f"{i + 1}. Highlighted: \"{c.get('highlightedText', '')}\"\n   Comment: {c.get('comment', '')}"
+        for i, c in enumerate(comments)
+    )
+
+    full_prompt = REGENERATE_PROMPT.format(
+        transcript=formatted_transcript,
+        summary=original_summary,
+        comments=formatted_comments,
+    )
+
+    new_summary, err = _call_llm(full_prompt)
+    if err:
+        return err
+
+    # Upload the new summary (overwrites previous)
+    try:
+        _upload_summary(session_id, new_summary)
+    except Exception as e:
+        return jsonify({"detail": f"Failed to upload regenerated summary: {e}"}), 500
+
+    # Stub: save this iteration for audit/history
+    save_summary_iteration(session_id, iteration=1, summary_text=new_summary, comments=comments)
+
+    return jsonify({"session_id": session_id, "summary": new_summary})
