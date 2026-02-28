@@ -106,6 +106,22 @@ def save_summary_iteration(session_id: str, iteration: int, summary_text: str, c
     """
     pass
 
+def save_final_summary(session_id: str, summary_text: str) -> str:
+    """
+    Save the user-approved final summary as a markdown file.
+    Uses a _final suffix so it's never overwritten by draft regenerations.
+    Returns the public URL.
+    """
+    file_name = f"summaries/{session_id}_final.md"
+    supabase.storage.from_("transcripts").upload(
+        file_name,
+        summary_text.encode("utf-8"),
+        {"content-type": "text/markdown", "upsert": "true"},
+    )
+    public_url = supabase.storage.from_("transcripts").get_public_url(file_name)
+    print(f"[DEBUG] [save_final_summary] Saved for session {session_id} at {public_url}")
+    return public_url
+
 
 # Routes
 
@@ -186,3 +202,26 @@ def regenerate_summary(session_id):
     save_summary_iteration(session_id, iteration=1, summary_text=new_summary, comments=comments)
 
     return jsonify({"session_id": session_id, "summary": new_summary})
+
+@summarize_bp.route("/summarize/<session_id>/approve", methods=["POST"])
+def approve_summary(session_id):
+    """
+    Save the final approved summary to permanent storage.
+
+    Expected request body:
+    {
+        "summary": "...the final summary text..."
+    }
+    """
+    body = request.get_json(silent=True) or {}
+    summary_text = body.get("summary", "").strip()
+
+    if not summary_text:
+        return jsonify({"detail": "summary is required"}), 400
+
+    try:
+        public_url = save_final_summary(session_id, summary_text)
+    except Exception as e:
+        return jsonify({"detail": f"Failed to save final summary: {e}"}), 500
+
+    return jsonify({"session_id": session_id, "summary_url": public_url})
