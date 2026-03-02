@@ -1,8 +1,8 @@
 # /api/chat (Gemini chat)
 from flask import Blueprint, request, jsonify
 import json
-from services.gemini import run_chat
-from routes.transcript import add_message, save_transcript
+from services.gemini import run_chat, generate_title
+from routes.transcript import add_message, save_transcript, get_session_title, set_session_title
 from services.supabase_client import list_sessions, get_session
 
 chat_bp = Blueprint("chat", __name__)
@@ -12,12 +12,18 @@ def chat():
     data = request.get_json()
     user_query = data.get("user_query")
     session_id = data.get("session_id")
-    print(f"[DEBUG] Current Session ID: {session_id}")
+    question = data.get("question")  # The question being answered
+    selected_option = data.get("selected_option")  # The option selected
+    
+    print(f"[DEBUG] Chat Request - Session: {session_id}")
+    print(f"[DEBUG] User Query: {user_query}")
+    print(f"[DEBUG] Question: {question}")
+    print(f"[DEBUG] Selected Option: {selected_option}")
 
     if not user_query:
         return jsonify({"response": "Please enter your question."})
 
-    transcript = add_message(session_id, "user", user_query)
+    transcript = add_message(session_id, "user", user_query, question=question, selected_option=selected_option)
 
     response = run_chat(user_query, transcript)
     parsed = None
@@ -38,14 +44,47 @@ def chat():
         print(f"[DEBUG] Failed to parse JSON: {e}")
         parsed = None
 
-    add_message(session_id, "bot", response_text)
+    # Format complete message for transcript including all questions
+    complete_transcript_message = response_text
+    
+    # Add sections if they exist (for Problem Definition or multi-part questions)
+    if sections:
+        complete_transcript_message += "\n\n"
+        for idx, section in enumerate(sections, 1):
+            complete_transcript_message += f"{idx}. {section.get('question', '')}\n"
+    
+    # Add options if they exist (for single-question options)
+    elif options:
+        complete_transcript_message += "\n\nOptions:\n"
+        for option in options:
+            complete_transcript_message += f"- {option}\n"
+    
+    print(f"[DEBUG] Complete Transcript Message: {complete_transcript_message[:200]}...")
+    
+    add_message(session_id, "bot", complete_transcript_message)
+
+    # Generate session title on first user message (greeting/problem statement)
+    session_title = get_session_title(session_id)
+    if not session_title:
+        # Generate a 3-5 word title from the user query
+        session_title = generate_title(user_query)
+        set_session_title(session_id, session_title)
+        print(f"[DEBUG] Generated session title: {session_title}")
+        
+        # Immediately save the session to database with the title
+        try:
+            save_transcript(session_id, title=session_title)
+            print(f"[DEBUG] Initial session saved to database with title")
+        except Exception as e:
+            print(f"[ERROR] Failed to save initial session: {e}")
 
     return jsonify({
         "response": response_text,
         "input_type": input_type,
         "options": options,
         "allow_other": allow_other,
-        "sections": sections
+        "sections": sections,
+        "session_title": session_title
     })
 
 @chat_bp.route("/chat/message", methods=["POST"])
@@ -111,8 +150,11 @@ def upload_transcript():
     if not session_id:
         return jsonify({"error": "session_id required"}), 400
     
-    print(f"[DEBUG] Uploading transcript for session {session_id}")
-    result = save_transcript(session_id, user_id)
+    # Get the title for this session
+    session_title = get_session_title(session_id)
+    
+    print(f"[DEBUG] Uploading transcript for session {session_id} with title: {session_title}")
+    result = save_transcript(session_id, user_id, title=session_title)
     
     if "error" in result:
         return jsonify(result), 500

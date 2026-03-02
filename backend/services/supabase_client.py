@@ -80,7 +80,7 @@ def upload_transcript_to_storage(session_id: str, transcript: list) -> Tuple[str
         print(f"[ERROR] Failed to upload transcript: {e}")
         raise
 
-def save_session_to_db(session_id: str, transcript_url: str, user_id: str = None) -> dict:
+def save_session_to_db(session_id: str, transcript_url: str, user_id: str = None, title: str = None) -> dict:
     """
     Save session metadata to Postgres database
     
@@ -88,6 +88,7 @@ def save_session_to_db(session_id: str, transcript_url: str, user_id: str = None
         session_id: Unique session identifier
         transcript_url: Public URL of uploaded transcript
         user_id: Optional user identifier
+        title: Optional session title
     
     Returns:
         Inserted session record
@@ -101,6 +102,9 @@ def save_session_to_db(session_id: str, transcript_url: str, user_id: str = None
             "created_at": datetime.utcnow().isoformat(),
             "ended_at": datetime.utcnow().isoformat()
         }
+        
+        if title:
+            session_data["title"] = title
         
         response = supabase.table("sessions").upsert(session_data, on_conflict="session_id").execute()
         print(f"[DEBUG] Saved session {session_id} to database")
@@ -121,7 +125,7 @@ def get_session(session_id: str) -> dict:
 
 
 def list_sessions(user_id: str = None) -> list:
-    """List all sessions, optionally filtered by user_id, with title from first message"""
+    """List all sessions, optionally filtered by user_id"""
     try:
         query = supabase.table("sessions").select("*")
         if user_id:
@@ -132,33 +136,11 @@ def list_sessions(user_id: str = None) -> list:
         if not sessions:
             return sessions
         
-        # Get all session IDs
-        session_ids = [s["session_id"] for s in sessions]
-        
-        try:
-            # Fetch first client message for each session in one query (more efficient)
-            all_messages = supabase.table("chat_messages").select("session_id, text").eq("sender", "client").in_("session_id", session_ids).order("timestamp", desc=False).execute()
-            
-            # Build a map of session_id -> first message
-            first_messages = {}
-            for msg in all_messages.data:
-                session_id = msg.get("session_id")
-                if session_id and session_id not in first_messages:
-                    first_messages[session_id] = msg.get("text")
-        except Exception as e:
-            print(f"[DEBUG] Could not fetch messages for titles: {e}")
-            first_messages = {}
-        
-        # Enhance each session with title
+        # Enhance sessions with fallback titles if not set
         for session in sessions:
-            session_id = session["session_id"]
-            message_text = first_messages.get(session_id)
-            
-            if message_text:
-                # Use first 50 chars of first client message as title
-                session["title"] = message_text[:50]
-            else:
-                # Fallback to session ID suffix
+            # If title doesn't exist or is None, use session ID as fallback
+            if not session.get("title"):
+                session_id = session["session_id"]
                 session["title"] = f"Session {session_id[-8:]}"
         
         return sessions
