@@ -29,6 +29,14 @@ Return ONLY valid JSON with these exact keys:
 - allowOther: boolean
 - sections: ONLY for inputType="mixed" - array of section objects
 
+STAGE DETECTION - Look for keywords in the transcript:
+- If transcript contains "What is the specific problem" or "What is the scope" → Problem Definition has been asked
+- If transcript contains "Functional requirements" → Check for Technical requirements next
+- If transcript contains "Technical requirements" → Check for Logistics next
+- If transcript contains "Logistics" → Check for Team next
+- If transcript contains "Team" questions → Next ask for completion
+NEVER repeat sections once they've been asked. Follow the linear progression.
+
 For "mixed" inputType (Problem Definition survey):
 ALWAYS include BOTH text AND sections:
 - text: 2-5 sentence PM introduction with context
@@ -38,10 +46,10 @@ ALWAYS include BOTH text AND sections:
   ]
 
 Rules:
-1) For Problem Definition: ALWAYS use inputType="mixed" with BOTH text AND sections
-2) Text is displayed first, sections displayed below for user input
-3) Never skip the text field - always include PM insights
-4) Keep all text fields and sections in single response
+1) Only return Problem Definition (with 6 sections) once - when you have exactly 2 AI messages
+2) NEVER ask Problem Definition questions more than once
+3) Use message count to track progression, not exact text matching
+4) For Project Scoping: follow linear order Functional → Technical → Logistics → Team → Completion
 5) Output must be VALID JSON only
 """
 
@@ -53,8 +61,15 @@ prompt = ChatPromptTemplate.from_messages([
 chain = prompt | llm
 
 def run_chat(user_message: str, session_history: str) -> str:
+    print(f"[DEBUG] === Running Chat ===")
+    print(f"[DEBUG] User Message: {user_message[:200]}...")
+    if session_history:
+        print(f"[DEBUG] Session History (last 500 chars): ...{session_history[-500:]}")
+    else:
+        print(f"[DEBUG] Session History: None (new session)")
+    
     result = chain.invoke({"message": user_message, 
-                           "session_history": session_history}).content
+                           "session_history": session_history or ""}).content
     # print(f"[DEBUG] Full Result: {result}") 
 
     # Sometimes it returns a list of json (even though I tried to specify
@@ -63,4 +78,5 @@ def run_chat(user_message: str, session_history: str) -> str:
     if not isinstance(result, str):
         result = result[0]['text']
 
+    print(f"[DEBUG] LLM Response: {result[:200]}...")
     return result

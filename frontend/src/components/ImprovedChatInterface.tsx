@@ -732,13 +732,15 @@ export function ImprovedChatInterface() {
   const messageIdCounterRef = useRef(0);
   const [sectionInputs, setSectionInputs] = useState<Record<number, string>>({});
 
-  const fetchNextMessage = useCallback(async (userText: string) => {
+  const fetchNextMessage = useCallback(async (userText: string, question?: string, selectedOption?: string) => {
     const response = await fetch(`${API_BASE}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_query: userText,
-        session_id: actualSessionId
+        session_id: actualSessionId,
+        question: question,
+        selected_option: selectedOption
       })
     });
 
@@ -798,13 +800,48 @@ export function ImprovedChatInterface() {
       // All restored messages are treated as already-answered (no active input UI).
       const restored: Message[] = transcript.map((entry, idx) => {
         const isAI = entry.role === 'bot';
+        const message = entry.message;
+        
+        // Parse sections from the message text if they exist
+        // Sections are formatted as "1. Question?\n2. Question?\n..."
+        const sections: Array<{
+          question: string;
+          inputType: 'text' | 'options';
+          options: string[];
+          allowOther: boolean;
+        }> = [];
+        const lines = message.split('\n');
+        let mainText = message;
+        
+        if (isAI) {
+          // Extract numbered questions as sections
+          const questionLines = lines.filter(line => /^\d+\.\s/.test(line.trim()));
+          if (questionLines.length > 0) {
+            // Find where questions start to split text from questions
+            const firstQuestionIdx = lines.findIndex(line => /^\d+\.\s/.test(line.trim()));
+            mainText = lines.slice(0, firstQuestionIdx).join('\n').trim();
+            
+            // Parse each question as a section
+            questionLines.forEach((line) => {
+              const question = line.replace(/^\d+\.\s/, '').trim();
+              sections.push({
+                question,
+                inputType: 'text' as const,
+                options: [],
+                allowOther: false
+              });
+            });
+          }
+        }
+        
         return {
           id: `restored-${idx}`,
           sender: isAI ? 'ai' : 'client',
-          text: entry.message,
+          text: mainText,
+          sections: sections.length > 0 ? sections : undefined,
           // Mark every restored AI message as answered so no input UI renders for it
           selectedOption: isAI ? 'restored' : undefined,
-          inputType: isAI ? 'text' : undefined,
+          inputType: sections.length > 0 ? 'mixed' : isAI ? 'text' : undefined,
           timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
         };
       });
@@ -875,6 +912,10 @@ export function ImprovedChatInterface() {
       return;
     }
 
+    // Get the question text from the message
+    const currentMsg = messages.find(m => m.id === messageId);
+    const questionText = currentMsg?.text || '';
+
     setMessages(prev => prev.map(msg =>
       msg.id === messageId ? { ...msg, selectedOption: option } : msg
     ));
@@ -889,7 +930,7 @@ export function ImprovedChatInterface() {
     setTimeout(async () => {
       try {
         setIsLoading(true);
-        const nextQuestion = await fetchNextMessage(option);
+        const nextQuestion = await fetchNextMessage(option, questionText, option);
         setMessages(prev => [...prev, clientResponse, nextQuestion]);
         setCurrentQuestionId(nextQuestion.id);
         await uploadTranscript(actualSessionId);
@@ -905,6 +946,10 @@ export function ImprovedChatInterface() {
   const handleOtherSubmit = (messageId: string | number) => {
     if (!otherInputValue.trim()) return;
 
+    // Get the question text from the message
+    const currentMsg = messages.find(m => m.id === messageId);
+    const questionText = currentMsg?.text || '';
+
     setMessages(prev => prev.map(msg =>
       msg.id === messageId ? { ...msg, selectedOption: 'Other', customResponse: otherInputValue } : msg
     ));
@@ -919,7 +964,7 @@ export function ImprovedChatInterface() {
     setTimeout(async () => {
       try {
         setIsLoading(true);
-        const nextQuestion = await fetchNextMessage(otherInputValue);
+        const nextQuestion = await fetchNextMessage(otherInputValue, questionText, 'Other');
         setMessages(prev => [...prev, clientResponse, nextQuestion]);
         setCurrentQuestionId(nextQuestion.id);
         await uploadTranscript(actualSessionId);
@@ -973,18 +1018,42 @@ export function ImprovedChatInterface() {
   };
 
   const handleSectionSubmit = () => {
+    // Collect all section inputs with their questions for context
+    const currentMsg = messages.find(m => m.id === currentQuestionId);
+    const sections = currentMsg?.sections || [];
+    
+    // Build the complete question text (all questions from the current message)
+    const allQuestions = sections
+      .map((section, idx) => `${idx + 1}. ${section.question}`)
+      .join('\n');
+    
+    // Build formatted responses - just the answers with "A:" prefix
     const responses = Object.entries(sectionInputs)
       .sort(([keyA], [keyB]) => parseInt(keyA) - parseInt(keyB))
-      .map(([_, value]) => value)
+      .map(([idx, value]) => `A: ${value}`)
       .filter(v => v.trim())
       .join('\n');
 
     if (!responses.trim()) return;
 
+    console.log('[DEBUG] Section Submit:', {
+      allQuestions,
+      responses,
+      sessionId: actualSessionId
+    });
+
+    // Mark the current message as answered
+    setMessages(prev => prev.map(msg =>
+      msg.id === currentQuestionId
+        ? { ...msg, selectedOption: 'answered' }
+        : msg
+    ));
+
     setTimeout(async () => {
       try {
         setIsLoading(true);
-        const nextQuestion = await fetchNextMessage(responses);
+        // Pass the complete question and formatted response to backend
+        const nextQuestion = await fetchNextMessage(responses, allQuestions, responses);
 
         const clientResponse: Message = {
           id: `client-${Date.now()}`,
@@ -1072,49 +1141,59 @@ export function ImprovedChatInterface() {
                       </div>
                       <p className="text-sm text-gray-900 leading-relaxed mb-4">{message.text}</p>
 
-                      {/* Multiple Sections */}
-                      {message.inputType === 'mixed' && message.sections && message.id === currentQuestionId && (
+                      {/* Multiple Sections - Show if current question OR already answered */}
+                      {message.inputType === 'mixed' && message.sections && (
                         <div className="space-y-6 mt-4 pt-4 border-t border-gray-200">
                           {message.sections.map((section, sectionIdx) => (
                             <div key={sectionIdx} className="space-y-2">
                               <h3 className="text-sm font-semibold text-gray-900">{section.question}</h3>
-                              {section.inputType === 'options' && section.options && (
-                                <div className="space-y-2">
-                                  {section.options.map((option, optIdx) => (
-                                    <button
-                                      key={optIdx}
-                                      onClick={() => setSectionInputs(prev => ({ ...prev, [sectionIdx]: option }))}
-                                      className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-all ${
-                                        sectionInputs[sectionIdx] === option
-                                          ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
-                                          : option === 'Other'
-                                          ? 'border-gray-300 bg-gray-50 hover:border-indigo-400 hover:bg-indigo-50 text-gray-700'
-                                          : 'border-gray-200 bg-white hover:border-indigo-500 hover:bg-indigo-50 text-gray-900'
-                                      } font-medium text-sm`}
-                                    >
-                                      {option}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                              {section.inputType === 'text' && (
-                                <input
-                                  type="text"
-                                  value={sectionInputs[sectionIdx] || ''}
-                                  onChange={(e) => setSectionInputs(prev => ({ ...prev, [sectionIdx]: e.target.value }))}
-                                  placeholder="Type your answer here..."
-                                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-                                />
+                              
+                              {/* Only show inputs if this is the current question and not answered */}
+                              {message.id === currentQuestionId && !message.selectedOption && (
+                                <>
+                                  {section.inputType === 'options' && section.options && (
+                                    <div className="space-y-2">
+                                      {section.options.map((option, optIdx) => (
+                                        <button
+                                          key={optIdx}
+                                          onClick={() => setSectionInputs(prev => ({ ...prev, [sectionIdx]: option }))}
+                                          className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-all ${
+                                            sectionInputs[sectionIdx] === option
+                                              ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
+                                              : option === 'Other'
+                                              ? 'border-gray-300 bg-gray-50 hover:border-indigo-400 hover:bg-indigo-50 text-gray-700'
+                                              : 'border-gray-200 bg-white hover:border-indigo-500 hover:bg-indigo-50 text-gray-900'
+                                          } font-medium text-sm`}
+                                        >
+                                          {option}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {section.inputType === 'text' && (
+                                    <input
+                                      type="text"
+                                      value={sectionInputs[sectionIdx] || ''}
+                                      onChange={(e) => setSectionInputs(prev => ({ ...prev, [sectionIdx]: e.target.value }))}
+                                      placeholder="Type your answer here..."
+                                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                                    />
+                                  )}
+                                </>
                               )}
                             </div>
                           ))}
-                          <button
-                            onClick={() => handleSectionSubmit()}
-                            disabled={isLoading}
-                            className="w-full px-4 py-3 mt-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-gray-400 font-medium text-sm"
-                          >
-                            {isLoading ? 'Submitting...' : 'Continue'}
-                          </button>
+                          
+                          {/* Show submit button only if current question and not answered */}
+                          {message.id === currentQuestionId && !message.selectedOption && (
+                            <button
+                              onClick={() => handleSectionSubmit()}
+                              disabled={isLoading}
+                              className="w-full px-4 py-3 mt-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-gray-400 font-medium text-sm"
+                            >
+                              {isLoading ? 'Submitting...' : 'Continue'}
+                            </button>
+                          )}
                         </div>
                       )}
 

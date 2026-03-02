@@ -12,12 +12,18 @@ def chat():
     data = request.get_json()
     user_query = data.get("user_query")
     session_id = data.get("session_id")
-    print(f"[DEBUG] Current Session ID: {session_id}")
+    question = data.get("question")  # The question being answered
+    selected_option = data.get("selected_option")  # The option selected
+    
+    print(f"[DEBUG] Chat Request - Session: {session_id}")
+    print(f"[DEBUG] User Query: {user_query}")
+    print(f"[DEBUG] Question: {question}")
+    print(f"[DEBUG] Selected Option: {selected_option}")
 
     if not user_query:
         return jsonify({"response": "Please enter your question."})
 
-    transcript = add_message(session_id, "user", user_query)
+    transcript = add_message(session_id, "user", user_query, question=question, selected_option=selected_option)
 
     response = run_chat(user_query, transcript)
     parsed = None
@@ -38,7 +44,24 @@ def chat():
         print(f"[DEBUG] Failed to parse JSON: {e}")
         parsed = None
 
-    add_message(session_id, "bot", response_text)
+    # Format complete message for transcript including all questions
+    complete_transcript_message = response_text
+    
+    # Add sections if they exist (for Problem Definition or multi-part questions)
+    if sections:
+        complete_transcript_message += "\n\n"
+        for idx, section in enumerate(sections, 1):
+            complete_transcript_message += f"{idx}. {section.get('question', '')}\n"
+    
+    # Add options if they exist (for single-question options)
+    elif options:
+        complete_transcript_message += "\n\nOptions:\n"
+        for option in options:
+            complete_transcript_message += f"- {option}\n"
+    
+    print(f"[DEBUG] Complete Transcript Message: {complete_transcript_message[:200]}...")
+    
+    add_message(session_id, "bot", complete_transcript_message)
 
     return jsonify({
         "response": response_text,
