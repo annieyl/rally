@@ -1,8 +1,8 @@
 # /api/chat (Gemini chat)
 from flask import Blueprint, request, jsonify
 import json
-from services.gemini import run_chat
-from routes.transcript import add_message, save_transcript
+from services.gemini import run_chat, generate_title
+from routes.transcript import add_message, save_transcript, get_session_title, set_session_title
 from services.supabase_client import list_sessions, get_session
 
 chat_bp = Blueprint("chat", __name__)
@@ -63,12 +63,28 @@ def chat():
     
     add_message(session_id, "bot", complete_transcript_message)
 
+    # Generate session title on first user message (greeting/problem statement)
+    session_title = get_session_title(session_id)
+    if not session_title:
+        # Generate a 3-5 word title from the user query
+        session_title = generate_title(user_query)
+        set_session_title(session_id, session_title)
+        print(f"[DEBUG] Generated session title: {session_title}")
+        
+        # Immediately save the session to database with the title
+        try:
+            save_transcript(session_id, title=session_title)
+            print(f"[DEBUG] Initial session saved to database with title")
+        except Exception as e:
+            print(f"[ERROR] Failed to save initial session: {e}")
+
     return jsonify({
         "response": response_text,
         "input_type": input_type,
         "options": options,
         "allow_other": allow_other,
-        "sections": sections
+        "sections": sections,
+        "session_title": session_title
     })
 
 @chat_bp.route("/chat/message", methods=["POST"])
@@ -134,8 +150,11 @@ def upload_transcript():
     if not session_id:
         return jsonify({"error": "session_id required"}), 400
     
-    print(f"[DEBUG] Uploading transcript for session {session_id}")
-    result = save_transcript(session_id, user_id)
+    # Get the title for this session
+    session_title = get_session_title(session_id)
+    
+    print(f"[DEBUG] Uploading transcript for session {session_id} with title: {session_title}")
+    result = save_transcript(session_id, user_id, title=session_title)
     
     if "error" in result:
         return jsonify(result), 500

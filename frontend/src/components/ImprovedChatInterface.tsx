@@ -758,6 +758,11 @@ export function ImprovedChatInterface() {
       options: section.options?.includes('Other') ? section.options : [...(section.options || []), 'Other']
     })) || [];
 
+    // Update project title if provided by backend
+    if (data.session_title) {
+      setProjectTitle(data.session_title);
+    }
+
     messageIdCounterRef.current += 1;
     const nextMessage: Message = {
       id: `ai-${Date.now()}-${messageIdCounterRef.current}`,
@@ -992,10 +997,19 @@ export function ImprovedChatInterface() {
     setTimeout(async () => {
       try {
         setIsLoading(true);
+        
+        // For the first question, don't send the greeting text, just the user's actual answer
         const nextQuestion = await fetchNextMessage(responseText);
 
         if (isFirstQuestion) {
-          setMessages(prev => [...prev, nextQuestion]);
+          // For first question: add a client message with the user's input, then the AI response
+          const clientResponse: Message = {
+            id: `client-${Date.now()}`,
+            sender: 'client',
+            text: responseText,
+            timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+          };
+          setMessages(prev => [...prev, clientResponse, nextQuestion]);
         } else {
           const clientResponse: Message = {
             id: `client-${Date.now()}`,
@@ -1027,12 +1041,12 @@ export function ImprovedChatInterface() {
       .map((section, idx) => `${idx + 1}. ${section.question}`)
       .join('\n');
     
-    // Build formatted responses - just the answers with "A:" prefix
+    // Build formatted responses - just the answers with "A:" prefix, with spacing between
     const responses = Object.entries(sectionInputs)
       .sort(([keyA], [keyB]) => parseInt(keyA) - parseInt(keyB))
-      .map(([idx, value]) => `A: ${value}`)
+      .map(([, value]) => `A: ${value}`)
       .filter(v => v.trim())
-      .join('\n');
+      .join('\n\n');
 
     if (!responses.trim()) return;
 

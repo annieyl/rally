@@ -11,6 +11,9 @@ from services.supabase_client import upload_transcript_to_storage, save_session_
 # {"123": [{"role": "user", "message": "Hi"}, {"role": "bot", "message": "Hi"}]}
 sessions = defaultdict(list)
 
+# Global dict to store session titles
+session_titles = {}
+
 def add_message(session_id: str, role: str, message: str, question: str = None, selected_option: str = None):
     """
     Args:
@@ -39,7 +42,7 @@ def add_message(session_id: str, role: str, message: str, question: str = None, 
     
     # print(f"[DEBUG] Added message {message_dictionary} to session {session_id}")
 
-def save_transcript(session_id: str, user_id: str = None):
+def save_transcript(session_id: str, user_id: str = None, title: str = None):
     if session_id not in sessions:
         print(f"[Warning] Session {session_id} not found")
         return {"error": "Session not found"}
@@ -47,8 +50,8 @@ def save_transcript(session_id: str, user_id: str = None):
 
     try:
         # Upload transcript JSON to Supabase Storage
-        transcript_url = upload_transcript_to_storage(session_id, transcript)
-        session_data = save_session_to_db(session_id, transcript_url, user_id=user_id)
+        exists, transcript_url, row = upload_transcript_to_storage(session_id, transcript)
+        session_data = save_session_to_db(session_id, transcript_url, user_id=user_id, title=title)
 
         # Keep session in memory - don't delete it
         # This allows continued chatting and periodic saves
@@ -86,3 +89,14 @@ def delete_session(session_id: str):
         print(f"[DEBUG] Deleted session {session_id}")
     else:
         print(f"[WARNING] Tried to delete non-existent session {session_id}")
+
+
+def get_session_title(session_id: str):
+    """Get the title for a session"""
+    return session_titles.get(session_id)
+
+
+def set_session_title(session_id: str, title: str):
+    """Set the title for a session"""
+    session_titles[session_id] = title
+    print(f"[DEBUG] Set session title: {session_id} -> {title}")

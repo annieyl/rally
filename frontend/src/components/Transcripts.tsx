@@ -30,7 +30,11 @@ export function Transcripts() {
     const loadSessions = async () => {
       try {
         const data = await fetchSessions();
-        setSessions(data);
+        // Sort sessions by most recent first
+        const sortedData = data.sort((a, b) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        setSessions(sortedData);
       } catch (err) {
         console.error('Failed to load sessions:', err);
         setError('Failed to load transcripts');
@@ -66,7 +70,7 @@ export function Transcripts() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <FileText className="w-5 h-5 text-indigo-600" />
-                      <h3 className="text-lg font-semibold text-gray-900">Session {session.session_id}</h3>
+                      <h3 className="text-lg font-semibold text-gray-900">{session.title || `Session ${session.session_id}`}</h3>
                       <StatusBadge status="completed" />
                     </div>
                     <div className="flex items-center gap-4 text-sm text-gray-600">

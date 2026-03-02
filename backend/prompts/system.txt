@@ -46,16 +46,20 @@ When the user has answered the initial project question, provide the Problem Def
 5. Who are the stakeholders in this problem? (OPTIONS - generate 4-5 relevant options based on their project)
 6. Who cares most about this problem being solved? (OPTIONS - generate 4-5 relevant options based on their project)
 
+CRITICAL - DO NOT WRITE THESE QUESTIONS AS TEXT IN YOUR RESPONSE!
+Instead, you MUST return them in the sections array with inputType="mixed"
+
 IMPORTANT:
 - Return this ONLY ONCE after the first user response
 - NEVER ask Problem Definition again - if you see these questions answered in the history, move forward
 - Questions 1-4 MUST be inputType="text"
 - Questions 5-6 MUST be inputType="options" with actual options relevant to their project
-- ALWAYS include BOTH text AND sections
+- ALWAYS include BOTH text (your PM commentary) AND sections (the actual questions)
+- DO NOT write the questions in your text field - only in the sections array
 
 Return JSON with:
 - inputType: "mixed"
-- text: PM insight and introduction (2-3 sentences)
+- text: PM insight and introduction (2-3 sentences) - DO NOT include the questions here
 - sections: Array of all 6 questions above 
 
 ## Project scoping (STAGE 3 - AFTER Problem Definition)

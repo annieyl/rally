@@ -22,35 +22,57 @@ backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 system_prompt = read_system_prompt(os.path.join(backend_dir, "prompts", "system.txt"))
 
 format_instructions = """
-Return ONLY valid JSON with these exact keys:
-- text: string (brief response or introduction)
+CRITICAL: You MUST return ONLY valid JSON. No plain text, no explanations outside JSON.
+
+JSON structure with these exact keys:
+- text: string (brief PM commentary - DO NOT include questions here)
 - inputType: "options", "text", or "mixed"
-- options: array of option strings (only for single-question options, leave empty for "mixed")
+- options: array of strings (only for inputType="options")
 - allowOther: boolean
-- sections: ONLY for inputType="mixed" - array of section objects
+- sections: array of section objects (REQUIRED for inputType="mixed")
 
-STAGE DETECTION - Look for keywords in the transcript:
-- If transcript contains "What is the specific problem" or "What is the scope" → Problem Definition has been asked
-- If transcript contains "Functional requirements" → Check for Technical requirements next
-- If transcript contains "Technical requirements" → Check for Logistics next
-- If transcript contains "Logistics" → Check for Team next
-- If transcript contains "Team" questions → Next ask for completion
-NEVER repeat sections once they've been asked. Follow the linear progression.
+STAGE DETECTION - Check transcript for these EXACT texts:
+1. Problem Definition keywords: "What is the specific problem you want to solve", "What is the scope of the problem"
+2. Functional Requirements keywords: "What kind of features", "mission-critical features"
+3. Technical Requirements keywords: "What is our budget", "tech stack"
+4. Logistics keywords: "in scope/out of scope", "deliverables"
+5. Team keywords: "team members", "teams involved"
 
-For "mixed" inputType (Problem Definition survey):
-ALWAYS include BOTH text AND sections:
-- text: 2-5 sentence PM introduction with context
-- sections: [
-    {{'question': 'Question 1?', 'inputType': 'text', 'options': [], 'allowOther': false}},
-    {{'question': 'Question 2?', 'inputType': 'options', 'options': ['Option A', 'Option B', 'Other'], 'allowOther': true}}
-  ]
+IF you find Problem Definition keywords → Move to Functional Requirements
+IF you find Functional Requirements keywords → Move to Technical Requirements
+IF you find Technical Requirements keywords → Move to Logistics
+IF you find Logistics keywords → Move to Team
+IF you find Team keywords → Ask "Is there anything else you want to add?"
 
-Rules:
-1) Only return Problem Definition (with 6 sections) once - when you have exactly 2 AI messages
-2) NEVER ask Problem Definition questions more than once
-3) Use message count to track progression, not exact text matching
-4) For Project Scoping: follow linear order Functional → Technical → Logistics → Team → Completion
-5) Output must be VALID JSON only
+PROBLEM DEFINITION (After user's first message):
+- User just told you their project idea
+- Transcript does NOT contain Problem Definition keywords
+- You MUST return inputType="mixed" with 6 sections
+- DO NOT write questions in the text field
+- Put questions ONLY in sections array
+
+Example for Problem Definition (COPY THIS STRUCTURE EXACTLY):
+{{
+  "text": "Great idea! To understand your vision better, I need to explore the core challenges.",
+  "inputType": "mixed",
+  "sections": [
+    {{"question": "What is the specific problem you want to solve?", "inputType": "text", "options": [], "allowOther": false}},
+    {{"question": "What is the scope of the problem?", "inputType": "text", "options": [], "allowOther": false}},
+    {{"question": "What are some specific examples of when you faced this problem?", "inputType": "text", "options": [], "allowOther": false}},
+    {{"question": "What have you or others already tried to do to solve this problem?", "inputType": "text", "options": [], "allowOther": false}},
+    {{"question": "Who are the stakeholders in this problem?", "inputType": "options", "options": ["Students", "Faculty", "Staff", "Other"], "allowOther": true}},
+    {{"question": "Who cares most about this problem being solved?", "inputType": "options", "options": ["Students", "Faculty", "Staff", "Other"], "allowOther": true}}
+  ],
+  "options": [],
+  "allowOther": false
+}}
+
+RULES:
+1) ALWAYS return valid JSON only
+2) For Problem Definition, MUST use inputType="mixed" with sections
+3) Check transcript BEFORE generating response
+4) NEVER repeat questions already answered
+5) Questions go in sections array, NOT in text field
 """
 
 prompt = ChatPromptTemplate.from_messages([
@@ -80,3 +102,26 @@ def run_chat(user_message: str, session_history: str) -> str:
 
     print(f"[DEBUG] LLM Response: {result[:200]}...")
     return result
+
+
+def generate_title(text: str) -> str:
+    """Generate a 3-5 word title from the given text"""
+    title_prompt = ChatPromptTemplate.from_messages([
+        ("system", "Generate a concise 3-5 word title for this project or product. Return ONLY the title, nothing else."),
+        ("user", "{text}")
+    ])
+    
+    title_chain = title_prompt | llm
+    
+    try:
+        result = title_chain.invoke({"text": text}).content
+        # Clean up the result
+        title = result.strip().strip('"').strip("'")
+        # Limit to 5 words max
+        words = title.split()[:5]
+        return " ".join(words)
+    except Exception as e:
+        print(f"[ERROR] Failed to generate title: {e}")
+        # Fallback: use first few words
+        words = text.split()[:4]
+        return " ".join(words) if words else "New Project"
