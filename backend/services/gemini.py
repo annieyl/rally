@@ -87,6 +87,7 @@ def run_chat(user_message: str, session_history: str) -> str:
     print(f"[DEBUG] User Message: {user_message[:200]}...")
     if session_history:
         print(f"[DEBUG] Session History (last 500 chars): ...{session_history[-500:]}")
+        print(f"[DEBUG] Session History (first 500 chars): ...{session_history[:500]}")
     else:
         print(f"[DEBUG] Session History: None (new session)")
     
