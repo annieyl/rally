@@ -28,7 +28,11 @@ export function AISummaries() {
     const loadSessions = async () => {
       try {
         const data = await fetchSessions();
-        setSessions(data);
+        // Sort sessions by most recent first
+        const sortedData = data.sort((a, b) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        setSessions(sortedData);
       } catch (err) {
         console.error('Failed to load sessions:', err);
         setError('Failed to load summaries');
