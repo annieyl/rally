@@ -100,9 +100,12 @@ def save_session_to_db(session_id: str, transcript_url: str, user_id: str = None
             "transcript_url": transcript_url,
             "user_id": user_id,
             "created_at": datetime.utcnow().isoformat(),
-            "ended_at": datetime.utcnow().isoformat()
+            "ended_at": datetime.utcnow().isoformat(),
+            "title": title
         }
         
+        print(f"[DEBUG] save_session_to_db: Title is {title}")
+
         if title:
             session_data["title"] = title
         

@@ -2,7 +2,7 @@
 from flask import Blueprint, request, jsonify
 import json
 from services.gemini import run_chat, generate_title
-from routes.transcript import add_message, save_transcript, get_session_title, set_session_title, get_transcript
+from routes.transcript import add_message, save_transcript, get_session_title, set_session_title, get_transcript_with_update
 from services.supabase_client import list_sessions, get_session, save_chat_message, get_chat_messages
 
 chat_bp = Blueprint("chat", __name__)
@@ -23,7 +23,7 @@ def chat():
     if not user_query:
         return jsonify({"response": "Please enter your question."})
 
-    transcript = add_message(session_id, "user", user_query, question=question, selected_option=selected_option)
+    transcript = get_transcript_with_update(session_id, "user", user_query, question=question, selected_option=selected_option)
 
     response = run_chat(user_query, transcript)
     parsed = None
@@ -61,7 +61,7 @@ def chat():
     
     print(f"[DEBUG] Complete Transcript Message: {complete_transcript_message[:200]}...")
     
-    add_message(session_id, "bot", complete_transcript_message)
+    
 
     # Generate session title on first user message (greeting/problem statement)
     session_title = get_session_title(session_id)
@@ -72,11 +72,16 @@ def chat():
         print(f"[DEBUG] Generated session title: {session_title}")
         
         # Immediately save the session to database with the title
-        try:
-            save_transcript(session_id, title=session_title)
-            print(f"[DEBUG] Initial session saved to database with title")
-        except Exception as e:
-            print(f"[ERROR] Failed to save initial session: {e}")
+        # try:
+        #     save_transcript(session_id, title=session_title)
+        #     print(f"[DEBUG] Initial session saved to database with title")
+        # except Exception as e:
+        #     print(f"[ERROR] Failed to save initial session: {e}")
+    print(f"[DEBUG] Session title is {session_title}")
+    print("[DEBUG] Saving user message")
+    add_message(session_id, "user", user_query, question=question, selected_option=selected_option, title=session_title)
+    print("[DEBUG] Saving bot message")
+    add_message(session_id, "bot", complete_transcript_message, title=session_title)
 
     return jsonify({
         "response": response_text,
