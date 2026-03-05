@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify
 import json
 from services.gemini import run_chat, generate_title
 from routes.transcript import add_message, save_transcript, get_session_title, set_session_title, get_transcript
-from services.supabase_client import list_sessions, get_session
+from services.supabase_client import list_sessions, get_session, save_chat_message, get_chat_messages
 
 chat_bp = Blueprint("chat", __name__)
 

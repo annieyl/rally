@@ -61,12 +61,12 @@ def add_message(session_id: str, role: str, message: str, question: str = None, 
     overwrite_transcript(session_id, transcript)
     
     # Create the DB record on first message
-    if not already_exists:
-        print(f"[DEBUG] Does not already exist")
-        file_name = f"transcripts/{session_id}.json"
-        from services.supabase_client import supabase
-        public_url = supabase.storage.from_("transcripts").get_public_url(file_name)
-        save_session_to_db(session_id, public_url)
+    # if not already_exists:
+    #     print(f"[DEBUG] Does not already exist")
+    #     file_name = f"transcripts/{session_id}.json"
+    #     from services.supabase_client import supabase
+    #     public_url = supabase.storage.from_("transcripts").get_public_url(file_name)
+    #     save_session_to_db(session_id, public_url)
 
     return transcript
     
@@ -80,7 +80,7 @@ def save_transcript(session_id: str, user_id: str = None, title: str = None):
 
     session = get_session(session_id)
     if not session:
-        session = save_session_to_db(session_id, transcript_url, user_id=user_id)
+        session = save_session_to_db(session_id, transcript_url, user_id=user_id, title=title)
 
     return {
         "session_id": session_id,
