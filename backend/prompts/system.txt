@@ -59,7 +59,7 @@ IMPORTANT:
 
 Return JSON with:
 - inputType: "mixed"
-- text: PM insight and introduction (2-3 sentences) - DO NOT include the questions here
+- text: PM insight and introduction (4-5 sentences) - DO NOT include the questions here
 - sections: Array of all 6 questions above 
 
 ## Project scoping (STAGE 3 - AFTER Problem Definition)
