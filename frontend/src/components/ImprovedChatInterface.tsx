@@ -711,7 +711,7 @@ const initialMessages: Message[] = [
   {
     id: '1',
     sender: 'ai',
-    text: 'To start, what kind of project do you want to build?',
+    text: 'Hi, nice to meet you. I can help turn your idea into a clear MVP plan (scope, features, timeline). To start: what are you hoping to build or improve, and what prompted you to tackle it now?',
     inputType: 'text',
     timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
   }

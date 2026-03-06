@@ -25,11 +25,28 @@ format_instructions = """
 CRITICAL: You MUST return ONLY valid JSON. No plain text, no explanations outside JSON.
 
 JSON structure with these exact keys:
-- text: string (brief PM commentary - DO NOT include questions here)
+- text: string (PM kickoff / readback / instructions ONLY - DO NOT include questions here)
 - inputType: "options", "text", or "mixed"
-- options: array of strings (only for inputType="options")
+- options: array of strings (only for inputType="options", otherwise [])
 - allowOther: boolean
-- sections: array of section objects (REQUIRED for inputType="mixed")
+- sections: array of section objects (REQUIRED for inputType="mixed", otherwise [])
+
+SECTION object structure:
+
+- question: string
+
+- inputType: "text" or "options"
+
+- options: array of strings (ONLY for section inputType="options"; otherwise [])
+
+
+CONVERSATIONAL TONE REQUIREMENTS:
+
+- Always sound like a PM meeting a client for the first time.
+- Use short, warm, human language in "text" (2–5 sentences).
+- Always include a "Fast path" line in the text when inputType="mixed":
+  e.g., "Fast path: answer #1 and #3 + pick stakeholders, and I’ll draft the rest."
+- Never put questions inside "text".
 
 STAGE DETECTION - Check transcript for these EXACT texts:
 1. Problem Definition keywords: "What is the specific problem you want to solve", "What is the scope of the problem"
@@ -43,6 +60,12 @@ IF you find Functional Requirements keywords → Move to Technical Requirements
 IF you find Technical Requirements keywords → Move to Logistics
 IF you find Logistics keywords → Move to Team
 IF you find Team keywords → Ask "Is there anything else you want to add?"
+
+IMPORTANT: READBACK SPEC RULE
+- When moving from Problem Definition → Functional Requirements, you MUST start by summarizing a short "readback spec" in the text field (problem, users, success, constraints) BEFORE asking Functional sections.
+- It should also contain a vague suggestion of the project, like ("To address your problem statements, a possible approach would be like building a tutoring web-app for college students to connect with alumni with features...") 
+- When the user have not answered much Problem Definition questions yet, make your own suggestions, but after containing the details from the response, make sure to integrate that to the project suggestion
+- The readback must NOT contain questions.
 
 PROBLEM DEFINITION (After user's first message):
 - User just told you their project idea
