@@ -735,7 +735,7 @@
 // }
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router';
+import { useParams, useNavigate } from 'react-router';
 import { createClient } from '@supabase/supabase-js';
 import ReactMarkdown from 'react-markdown';
 import { PrimaryButton } from './ui/PrimaryButton';
@@ -977,12 +977,9 @@ function SummaryWithHighlights({ summary, comments, containerRef, onMouseUp }: S
 export function TranscriptSummary() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
   const [summary, setSummary] = useState<string | null>(null);
-  // Start in approved mode if the URL has ?approved=true
-  const [approved, setApproved] = useState(searchParams.get('approved') === 'true');
-  const [loading, setLoading] = useState(approved); // if approved, we need to fetch the final summary
+  const [loading, setLoading] = useState(true); // always try to load existing summary on mount
   const [regenerating, setRegenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -996,29 +993,36 @@ export function TranscriptSummary() {
   const summaryContainerRef = useRef<HTMLDivElement>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
 
-  // If landing with ?approved=true, load the final summary from Supabase directly
+  // On mount: try to load an existing summary (final → draft), then drop into edit mode.
   useEffect(() => {
-    if (!approved || !id || !supabase) return;
+    if (!id) { setLoading(false); return; }
+    if (!supabase) { setLoading(false); return; }
 
-    async function loadFinalSummary() {
+    async function loadExistingSummary() {
       try {
         setLoading(true);
         setError(null);
-        const { data, error: dlError } = await supabase!.storage
-          .from('transcripts')
-          .download(`summaries/${id}_final.md`);
-        if (dlError) throw new Error(dlError.message);
-        setSummary(await data.text());
+
+        // Prefer the finalized version; fall back to draft.
+        const paths = [`summaries/${id}_final.md`, `summaries/${id}.txt`];
+        for (const path of paths) {
+          const { data, error: dlError } = await supabase!.storage
+            .from('transcripts')
+            .download(path);
+          if (!dlError && data) {
+            setSummary(await data.text());
+            return; // found one — stop searching
+          }
+        }
+        // No existing summary found — leave summary null so the generate prompt shows.
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load final summary.');
-        // Fall back to the normal editing view so the user isn't stuck
-        setApproved(false);
+        console.error('Failed to probe existing summary:', err);
       } finally {
         setLoading(false);
       }
     }
 
-    loadFinalSummary();
+    loadExistingSummary();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // run once on mount only
 
@@ -1145,7 +1149,6 @@ export function TranscriptSummary() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.detail ?? `Request failed with status ${res.status}`);
       }
-      setApproved(true);
       setComments([]);
       setPendingSelection(null);
     } catch (err) {
@@ -1178,21 +1181,16 @@ export function TranscriptSummary() {
       <div className="flex-1 overflow-auto p-8 bg-[#F8F9FB]">
         <div className="max-w-6xl mx-auto">
 
-          {/* Loading (either initial generate or loading final summary) */}
+          {/* Loading */}
           {loading && (
             <div className="flex flex-col items-center justify-center py-32 gap-3 text-gray-500">
               <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
-              <span className="text-sm">{approved ? 'Loading final summary…' : 'Generating summary…'}</span>
+              <span className="text-sm">Loading summary…</span>
             </div>
           )}
 
-          {/* ── APPROVED: locked read-only view ── */}
-          {!loading && approved && summary && (
-            <ApprovedView summary={summary} />
-          )}
-
-          {/* ── EDITING FLOW ── */}
-          {!loading && !approved && (
+          {/* ── EDITING / COMMENTABLE FLOW (always) ── */}
+          {!loading && (
             <>
               {/* Initial state */}
               {!error && !summary && (
