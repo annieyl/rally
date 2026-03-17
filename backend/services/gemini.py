@@ -130,6 +130,8 @@ def run_chat(user_message: str, session_history: str) -> str:
 
 
 def _clean_title(raw_title: str, max_words: int = 4) -> str:
+    print(f"[DEBUG] _clean_title: raw_title is {raw_title}")
+    raw_title = raw_title[0].get('text')
     text = (raw_title or "").strip()
     text = text.replace("\n", " ").replace("\r", " ")
     text = text.strip('"\'`')
@@ -165,23 +167,27 @@ def _fallback_title(text: str, max_words: int = 4) -> str:
 
 def generate_title(text: str) -> str:
     """Generate a concise summary title with a maximum of 4 words."""
-    title_prompt = ChatPromptTemplate.from_messages([
-        ("system", """Generate a concise project summary title.
+    instructions = """Generate a concise project summary title.
 
 Rules:
-- Return ONLY the title text.
+- Look at the text and generate a title that captures what this conversation will be about.
 - Use MAX 4 words.
 - Make it a short noun phrase that summarizes the user's request.
-- Avoid prefixes like 'I want', 'Need', 'Build', 'Create'.
+- Avoid prefixes like 'I want', 'Need', 'Build', 'Create', 'Make'.
 - No extra punctuation or quotes.
+- The title does not need to be a subset of the first message; it needs to be a summary.
+- Append the word "App" to the end of the title.
 
 Examples:
 - Meal Plan Tracker
 - Career Advisor App
 - Student Attendance Tracker
-"""),
+"""
+    title_prompt = ChatPromptTemplate.from_messages([
+        ("system", instructions),
         ("user", "{text}")
     ])
+    print(f"[DEBUG] generate_title.py: text: {text}")
     
     title_chain = title_prompt | llm
     
