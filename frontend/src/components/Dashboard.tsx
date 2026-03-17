@@ -1,24 +1,48 @@
+import { useEffect, useMemo, useState } from 'react';
 import { MessageSquare, FileText, Send, Tag } from 'lucide-react';
 import { Card } from './ui/Card';
 import { StatusBadge } from './ui/StatusBadge';
 import { Link } from 'react-router';
+import { fetchSessions } from '../api/transcript';
 
-const stats = [
-  { label: 'Total Sessions', value: '247', icon: MessageSquare, color: 'indigo' },
-  { label: 'Pending Summaries', value: '12', icon: FileText, color: 'amber' },
-  { label: 'Projects Routed', value: '189', icon: Send, color: 'green' },
-  { label: 'Most Tagged Dept', value: 'Frontend', icon: Tag, color: 'purple' },
-];
-
-const recentSessions = [
-  { id: 1, title: 'E-commerce Platform Redesign', status: 'completed', department: 'Frontend', date: '2 hours ago' },
-  { id: 2, title: 'API Integration Project', status: 'pending', department: 'Backend', date: '5 hours ago' },
-  { id: 3, title: 'Mobile App Development', status: 'in-progress', department: 'Design', date: '1 day ago' },
-  { id: 4, title: 'CRM System Enhancement', status: 'completed', department: 'Business', date: '1 day ago' },
-  { id: 5, title: 'Analytics Dashboard', status: 'completed', department: 'Frontend', date: '2 days ago' },
-];
+interface Session {
+  id: number;
+  session_id: string;
+  title?: string;
+  created_at: string;
+}
 
 export function Dashboard() {
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadSessions = async () => {
+      try {
+        const data = await fetchSessions();
+        const sorted = data
+          .slice()
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setSessions(sorted);
+      } catch (error) {
+        console.error('Failed to load dashboard sessions:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadSessions();
+  }, []);
+
+  const recentSessions = useMemo(() => sessions.slice(0, 5), [sessions]);
+
+  const stats = [
+    { label: 'Total Sessions', value: String(sessions.length), icon: MessageSquare, color: 'indigo' },
+    { label: 'Pending Summaries', value: String(sessions.length), icon: FileText, color: 'amber' },
+    { label: 'Projects Routed', value: '189', icon: Send, color: 'green' },
+    { label: 'Most Tagged Dept', value: 'Frontend', icon: Tag, color: 'purple' },
+  ];
+
   return (
     <div className="p-8">
       {/* Header */}
@@ -36,7 +60,7 @@ export function Dashboard() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm text-gray-600 mb-1">{stat.label}</p>
-                  <p className="text-3xl font-semibold text-gray-900">{stat.value}</p>
+                  <p className="text-3xl font-semibold text-gray-900">{isLoading ? '-' : stat.value}</p>
                 </div>
                 <div className={`w-12 h-12 rounded-lg bg-${stat.color}-100 flex items-center justify-center`}>
                   <Icon className={`w-6 h-6 text-${stat.color}-600`} />
@@ -75,23 +99,32 @@ export function Dashboard() {
                 <tr key={session.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-4">
                     <Link 
-                      to={`/transcript/${session.id}`}
+                      to={`/chat/${session.session_id}`}
                       className="text-sm font-medium text-gray-900 hover:text-indigo-600"
                     >
-                      {session.title}
+                      {session.title || `Session ${session.session_id.slice(-8)}`}
                     </Link>
                   </td>
                   <td className="px-4 py-4">
-                    <StatusBadge status={session.status} />
+                    <StatusBadge status="completed" />
                   </td>
                   <td className="px-4 py-4">
-                    <span className="text-sm text-gray-700">{session.department}</span>
+                    <span className="text-sm text-gray-700">—</span>
                   </td>
                   <td className="px-4 py-4">
-                    <span className="text-sm text-gray-500">{session.date}</span>
+                    <span className="text-sm text-gray-500">
+                      {new Date(session.created_at).toLocaleDateString()}
+                    </span>
                   </td>
                 </tr>
               ))}
+              {!isLoading && recentSessions.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-500">
+                    No sessions found.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
