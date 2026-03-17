@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 import os 
 import sys
+import re
 load_dotenv()
 
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -128,10 +129,57 @@ def run_chat(user_message: str, session_history: str) -> str:
     return result
 
 
+def _clean_title(raw_title: str, max_words: int = 4) -> str:
+    text = (raw_title or "").strip()
+    text = text.replace("\n", " ").replace("\r", " ")
+    text = text.strip('"\'`')
+    text = re.sub(r"\s+", " ", text)
+
+    words = []
+    for token in text.split(" "):
+        cleaned_token = re.sub(r"^[^\w&+-]+|[^\w&+-]+$", "", token)
+        if cleaned_token:
+            words.append(cleaned_token)
+        if len(words) >= max_words:
+            break
+
+    return " ".join(words).title()
+
+
+def _fallback_title(text: str, max_words: int = 4) -> str:
+    stopwords = {
+        "a", "an", "and", "are", "as", "at", "be", "build", "by", "for",
+        "from", "i", "in", "is", "it", "my", "need", "of", "on", "or",
+        "our", "project", "that", "the", "this", "to", "want", "we", "with"
+    }
+
+    tokens = re.findall(r"[A-Za-z0-9&+-]+", text.lower())
+    key_tokens = [token for token in tokens if token not in stopwords]
+    selected_tokens = key_tokens[:max_words] if key_tokens else tokens[:max_words]
+
+    if not selected_tokens:
+        return "New Project"
+
+    return " ".join(selected_tokens).title()
+
+
 def generate_title(text: str) -> str:
-    """Generate a 3-5 word title from the given text"""
+    """Generate a concise summary title with a maximum of 4 words."""
     title_prompt = ChatPromptTemplate.from_messages([
-        ("system", "Generate a concise 3-5 word title for this project or product. Return ONLY the title, nothing else."),
+        ("system", """Generate a concise project summary title.
+
+Rules:
+- Return ONLY the title text.
+- Use MAX 4 words.
+- Make it a short noun phrase that summarizes the user's request.
+- Avoid prefixes like 'I want', 'Need', 'Build', 'Create'.
+- No extra punctuation or quotes.
+
+Examples:
+- Meal Plan Tracker
+- Career Advisor App
+- Student Attendance Tracker
+"""),
         ("user", "{text}")
     ])
     
@@ -139,13 +187,8 @@ def generate_title(text: str) -> str:
     
     try:
         result = title_chain.invoke({"text": text}).content
-        # Clean up the result
-        title = result.strip().strip('"').strip("'")
-        # Limit to 5 words max
-        words = title.split()[:5]
-        return " ".join(words)
+        cleaned_title = _clean_title(result, max_words=4)
+        return cleaned_title if cleaned_title else _fallback_title(text, max_words=4)
     except Exception as e:
         print(f"[ERROR] Failed to generate title: {e}")
-        # Fallback: use first few words
-        words = text.split()[:4]
-        return " ".join(words) if words else "New Project"
+        return _fallback_title(text, max_words=4)

@@ -794,6 +794,10 @@ export function ImprovedChatInterface() {
         return;
       }
 
+      if (sessionData.title) {
+        setProjectTitle(sessionData.title);
+      }
+
       const transcript = await getTranscript(sessionData.transcript_url);
       if (!transcript || transcript.length === 0) {
         console.log('[DEBUG] Empty transcript for session', sessionId);
@@ -887,13 +891,6 @@ export function ImprovedChatInterface() {
       setMessages(initialMessages);
     }
   }, [sessionId, loadSessionMessages]);
-
-  useEffect(() => {
-    const firstClientResponse = messages.find(m => m.sender === 'client');
-    if (firstClientResponse?.text) {
-      setProjectTitle(firstClientResponse.text.substring(0, 40) + (firstClientResponse.text.length > 40 ? '...' : ''));
-    }
-  }, [messages]);
 
   useEffect(() => {
     if (messages.length === 0) return;
