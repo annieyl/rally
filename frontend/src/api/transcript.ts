@@ -27,6 +27,7 @@ interface Session {
   transcript_url: string;
   created_at: string;
   ended_at: string;
+  title?: string;
 }
 
 interface ChatMessage {

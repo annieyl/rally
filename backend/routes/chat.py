@@ -66,7 +66,7 @@ def chat():
     # Generate session title on first user message (greeting/problem statement)
     session_title = get_session_title(session_id)
     if not session_title:
-        # Generate a 3-5 word title from the user query
+        # Generate a concise summary title (max 4 words) from the user query
         session_title = generate_title(user_query)
         set_session_title(session_id, session_title)
         print(f"[DEBUG] Generated session title: {session_title}")
