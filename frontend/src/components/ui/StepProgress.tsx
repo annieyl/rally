@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react';
 
-interface Step {
+export interface Step {
   label: string;
   status: 'completed' | 'current' | 'pending';
 }

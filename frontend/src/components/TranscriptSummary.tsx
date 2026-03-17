@@ -740,7 +740,7 @@ import { createClient } from '@supabase/supabase-js';
 import ReactMarkdown from 'react-markdown';
 import { PrimaryButton } from './ui/PrimaryButton';
 import { SecondaryButton } from './ui/SecondaryButton';
-import { ArrowLeft, Loader2, AlertCircle, Sparkles, MessageSquare, X, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, Sparkles, MessageSquare, X, CheckCircle2, Tag, User } from 'lucide-react';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000';
 
@@ -750,6 +750,64 @@ const supabase =
   SUPABASE_URL && SUPABASE_ANON_KEY
     ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
+
+const SUMMARY_DRAFT_STORAGE_PREFIX = 'rally:summary-draft:';
+
+const DEPARTMENTS = ['Frontend', 'Backend', 'Design', 'Business', 'DevOps', 'QA'] as const;
+type DepartmentName = (typeof DEPARTMENTS)[number];
+
+const DEFAULT_DEPARTMENT_STYLE = {
+  markClass: 'bg-gray-200/80',
+  cardClass: 'bg-gray-50',
+  borderClass: 'border-gray-200',
+  chipClass: 'bg-gray-200 text-gray-700',
+  quoteClass: 'bg-gray-100 text-gray-700',
+};
+
+const DEPARTMENT_STYLE: Record<DepartmentName, typeof DEFAULT_DEPARTMENT_STYLE> = {
+  Frontend: {
+    markClass: 'bg-indigo-200/80',
+    cardClass: 'bg-indigo-50',
+    borderClass: 'border-indigo-200',
+    chipClass: 'bg-indigo-100 text-indigo-700',
+    quoteClass: 'bg-indigo-100 text-indigo-700',
+  },
+  Backend: {
+    markClass: 'bg-purple-200/80',
+    cardClass: 'bg-purple-50',
+    borderClass: 'border-purple-200',
+    chipClass: 'bg-purple-100 text-purple-700',
+    quoteClass: 'bg-purple-100 text-purple-700',
+  },
+  Design: {
+    markClass: 'bg-pink-200/80',
+    cardClass: 'bg-pink-50',
+    borderClass: 'border-pink-200',
+    chipClass: 'bg-pink-100 text-pink-700',
+    quoteClass: 'bg-pink-100 text-pink-700',
+  },
+  Business: {
+    markClass: 'bg-blue-200/80',
+    cardClass: 'bg-blue-50',
+    borderClass: 'border-blue-200',
+    chipClass: 'bg-blue-100 text-blue-700',
+    quoteClass: 'bg-blue-100 text-blue-700',
+  },
+  DevOps: {
+    markClass: 'bg-green-200/80',
+    cardClass: 'bg-green-50',
+    borderClass: 'border-green-200',
+    chipClass: 'bg-green-100 text-green-700',
+    quoteClass: 'bg-green-100 text-green-700',
+  },
+  QA: {
+    markClass: 'bg-amber-200/80',
+    cardClass: 'bg-amber-50',
+    borderClass: 'border-amber-200',
+    chipClass: 'bg-amber-100 text-amber-700',
+    quoteClass: 'bg-amber-100 text-amber-700',
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -761,6 +819,33 @@ interface Comment {
   comment: string;
   startOffset: number;
   endOffset: number;
+  departments: DepartmentName[];
+  assignees: TaggedAssignee[];
+}
+
+interface TaggedAssignee {
+  id: number;
+  name: string;
+  team: DepartmentName;
+}
+
+interface TeamMember {
+  id: number;
+  team: DepartmentName;
+  name: string;
+  role: string;
+  email: string;
+}
+
+interface NewCommentPayload {
+  text: string;
+  departments: DepartmentName[];
+  assignees: TaggedAssignee[];
+}
+
+interface StoredSummaryDraft {
+  summary: string;
+  comments: Comment[];
 }
 
 interface SelectionInfo {
@@ -768,6 +853,12 @@ interface SelectionInfo {
   startOffset: number;
   endOffset: number;
   rect: DOMRect;
+  rects: Array<{
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -776,6 +867,102 @@ interface SelectionInfo {
 
 function generateId() {
   return Math.random().toString(36).slice(2, 9);
+}
+
+function isDepartment(team: unknown): team is DepartmentName {
+  return typeof team === 'string' && DEPARTMENTS.includes(team as DepartmentName);
+}
+
+function getDepartmentStyle(department: DepartmentName | null | undefined) {
+  return department ? DEPARTMENT_STYLE[department] : DEFAULT_DEPARTMENT_STYLE;
+}
+
+function normalizeStoredAssignee(raw: unknown): TaggedAssignee | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as { id?: unknown; name?: unknown; team?: unknown };
+  if (
+    typeof record.id !== 'number' ||
+    typeof record.name !== 'string' ||
+    !isDepartment(record.team)
+  ) {
+    return null;
+  }
+
+  return {
+    id: record.id,
+    name: record.name,
+    team: record.team,
+  };
+}
+
+function normalizeStoredComment(raw: unknown): Comment | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as {
+    id?: unknown;
+    highlightedText?: unknown;
+    comment?: unknown;
+    startOffset?: unknown;
+    endOffset?: unknown;
+    departments?: unknown;
+    assignees?: unknown;
+    department?: unknown;
+    assigneeId?: unknown;
+    assigneeName?: unknown;
+  };
+
+  if (
+    typeof record.id !== 'string' ||
+    typeof record.highlightedText !== 'string' ||
+    typeof record.comment !== 'string' ||
+    typeof record.startOffset !== 'number' ||
+    typeof record.endOffset !== 'number'
+  ) {
+    return null;
+  }
+
+  const departments = Array.isArray(record.departments)
+    ? record.departments.filter((item): item is DepartmentName => isDepartment(item))
+    : [];
+
+  if (departments.length === 0 && isDepartment(record.department)) {
+    departments.push(record.department);
+  }
+
+  const assignees = Array.isArray(record.assignees)
+    ? record.assignees
+        .map((item) => normalizeStoredAssignee(item))
+        .filter((item): item is TaggedAssignee => item !== null)
+    : [];
+
+  if (
+    assignees.length === 0 &&
+    typeof record.assigneeId === 'number' &&
+    typeof record.assigneeName === 'string'
+  ) {
+    const legacyTeam = isDepartment(record.department) ? record.department : departments[0] ?? null;
+    if (legacyTeam) {
+      assignees.push({
+        id: record.assigneeId,
+        name: record.assigneeName,
+        team: legacyTeam,
+      });
+    }
+  }
+
+  const uniqueDepartments = [...new Set(departments)];
+  const uniqueAssignees = assignees.filter(
+    (assignee, index, self) => index === self.findIndex((other) => other.id === assignee.id)
+  );
+
+  return {
+    id: record.id,
+    highlightedText: record.highlightedText,
+    comment: record.comment,
+    startOffset: record.startOffset,
+    endOffset: record.endOffset,
+    departments: uniqueDepartments,
+    assignees: uniqueAssignees,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -802,53 +989,54 @@ function SummaryMarkdown({ content }: { content: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// ApprovedView — read-only, shown after saving or when landing with ?approved=true
-// ---------------------------------------------------------------------------
-
-interface ApprovedViewProps {
-  summary: string;
-}
-
-function ApprovedView({ summary }: ApprovedViewProps) {
-  return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
-        <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
-        <div>
-          <p className="text-sm font-semibold text-green-800">Summary approved and saved</p>
-          <p className="text-xs text-green-600 mt-0.5">
-            This summary has been locked. Use "View AI Summary" to start a new draft.
-          </p>
-        </div>
-      </div>
-      <div className="bg-white border border-gray-200 rounded-xl p-6 prose prose-sm max-w-none text-gray-800">
-        <SummaryMarkdown content={summary} />
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // CommentBubble
 // ---------------------------------------------------------------------------
 
 interface CommentBubbleProps {
   selection: SelectionInfo;
-  onAdd: (text: string) => void;
+  onAdd: (payload: NewCommentPayload) => void;
   onDismiss: () => void;
   bubbleRef: React.RefObject<HTMLDivElement>;
+  departments: readonly DepartmentName[];
+  teamMembers: TeamMember[];
 }
 
-function CommentBubble({ selection, onAdd, onDismiss, bubbleRef }: CommentBubbleProps) {
+function CommentBubble({ selection, onAdd, onDismiss, bubbleRef, departments, teamMembers }: CommentBubbleProps) {
   const [text, setText] = useState('');
+  const [showTagPicker, setShowTagPicker] = useState(false);
+  const [selectedDepartments, setSelectedDepartments] = useState<DepartmentName[]>([]);
+  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<number[]>([]);
+
+  const selectedAssignees = teamMembers.filter((member) => selectedAssigneeIds.includes(member.id));
+
+  const visibleTeamMembers = teamMembers;
+
+  const canSubmit = Boolean(text.trim() || selectedDepartments.length > 0 || selectedAssignees.length > 0);
+
+  const submit = () => {
+    if (!canSubmit) return;
+
+    const mergedDepartments = new Set<DepartmentName>(selectedDepartments);
+    selectedAssignees.forEach((assignee) => mergedDepartments.add(assignee.team));
+
+    onAdd({
+      text: text.trim(),
+      departments: [...mergedDepartments],
+      assignees: selectedAssignees.map((assignee) => ({
+        id: assignee.id,
+        name: assignee.name,
+        team: assignee.team,
+      })),
+    });
+  };
 
   return (
     <div
       ref={bubbleRef}
-      className="absolute z-50 bg-white border border-gray-200 rounded-xl shadow-lg p-3 w-72"
+      className="absolute z-50 bg-white border border-gray-200 rounded-xl shadow-lg p-3 w-80"
       style={{
         top: selection.rect.bottom + window.scrollY + 8,
-        left: Math.min(selection.rect.left + window.scrollX, window.innerWidth - 300),
+        left: Math.min(selection.rect.left + window.scrollX, window.innerWidth - 332),
       }}
     >
       <p className="text-xs text-gray-500 mb-1 italic truncate">
@@ -864,22 +1052,106 @@ function CommentBubble({ selection, onAdd, onDismiss, bubbleRef }: CommentBubble
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            if (text.trim()) onAdd(text.trim());
+            submit();
           }
           if (e.key === 'Escape') onDismiss();
         }}
       />
-      <div className="flex justify-end gap-2 mt-2">
+
+      {(selectedDepartments.length > 0 || selectedAssignees.length > 0) && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {selectedDepartments.map((department) => (
+            <span key={department} className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${getDepartmentStyle(department).chipClass}`}>
+              {department}
+            </span>
+          ))}
+          {selectedAssignees.map((assignee) => (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-700">
+              <User className="w-3 h-3" />
+              {assignee.name}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="relative flex items-center justify-between mt-2">
+        <button
+          type="button"
+          onClick={() => setShowTagPicker((prev) => !prev)}
+          className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 px-2 py-1 rounded-md hover:bg-indigo-50"
+        >
+          <Tag className="w-3.5 h-3.5" />
+          Tag
+        </button>
+
+        {showTagPicker && (
+          <div className="absolute left-0 top-9 z-10 w-72 bg-white border border-gray-200 rounded-xl shadow-lg p-3 space-y-3">
+            <div>
+              <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Departments</p>
+              <div className="flex flex-wrap gap-1.5">
+                {departments.map((department) => (
+                  <button
+                    key={department}
+                    type="button"
+                    onClick={() => {
+                      if (selectedDepartments.includes(department)) {
+                        setSelectedDepartments((prev) => prev.filter((item) => item !== department));
+                        return;
+                      }
+                      setSelectedDepartments((prev) => [...prev, department]);
+                    }}
+                    className={`px-2 py-1 rounded-md text-[11px] font-medium border ${selectedDepartments.includes(department) ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    {department}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Team Members</p>
+              <div className="max-h-28 overflow-y-auto space-y-1">
+                {visibleTeamMembers.length > 0 ? (
+                  visibleTeamMembers.map((member) => (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => {
+                        if (selectedAssigneeIds.includes(member.id)) {
+                          setSelectedAssigneeIds((prev) => prev.filter((item) => item !== member.id));
+                          return;
+                        }
+                        setSelectedAssigneeIds((prev) => [...prev, member.id]);
+                        if (!selectedDepartments.includes(member.team)) {
+                          setSelectedDepartments((prev) => [...prev, member.team]);
+                        }
+                      }}
+                      className={`w-full text-left px-2 py-1 rounded-md text-[11px] border ${selectedAssigneeIds.includes(member.id) ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      {member.name}
+                      <span className="ml-1 text-gray-400">({member.team})</span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-[11px] text-gray-400 italic">No team members found for this department.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2">
         <button onClick={onDismiss} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1">
           Cancel
         </button>
         <button
-          disabled={!text.trim()}
-          onClick={() => onAdd(text.trim())}
+          disabled={!canSubmit}
+          onClick={submit}
           className="text-xs bg-indigo-600 text-white px-3 py-1 rounded-lg disabled:opacity-40 hover:bg-indigo-700"
         >
-          Add
+          Save
         </button>
+        </div>
       </div>
     </div>
   );
@@ -892,9 +1164,11 @@ function CommentBubble({ selection, onAdd, onDismiss, bubbleRef }: CommentBubble
 interface CommentSidebarProps {
   comments: Comment[];
   onDelete: (id: string) => void;
+  onRemoveDepartment: (id: string, department: DepartmentName) => void;
+  onRemoveAssignee: (id: string, assigneeId: number) => void;
 }
 
-function CommentSidebar({ comments, onDelete }: CommentSidebarProps) {
+function CommentSidebar({ comments, onDelete, onRemoveDepartment, onRemoveAssignee }: CommentSidebarProps) {
   if (comments.length === 0) {
     return (
       <p className="text-sm text-gray-400 italic text-center mt-8">
@@ -905,20 +1179,70 @@ function CommentSidebar({ comments, onDelete }: CommentSidebarProps) {
 
   return (
     <div className="space-y-3">
-      {comments.map((c) => (
-        <div key={c.id} className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-sm relative group">
-          <p className="text-xs text-gray-500 italic mb-1 truncate">
+      {comments.map((c) => {
+        const primaryDepartment = c.departments[0] ?? c.assignees[0]?.team;
+        const style = getDepartmentStyle(primaryDepartment);
+        return (
+        <div key={c.id} className={`${style.cardClass} border ${style.borderClass} rounded-xl p-3 text-sm relative group`}>
+          <p className={`${style.quoteClass} text-xs italic mb-2 truncate px-2 py-1 rounded-md`}>
             "{c.highlightedText.slice(0, 50)}{c.highlightedText.length > 50 ? '…' : ''}"
           </p>
-          <p className="text-gray-700 leading-relaxed">{c.comment}</p>
+
+          {(c.departments.length > 0 || c.assignees.length > 0) && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {c.departments.map((department) => (
+                <span key={department} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${getDepartmentStyle(department).chipClass}`}>
+                  {department}
+                  <button
+                    type="button"
+                    title="Untag department"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onRemoveDepartment(c.id, department);
+                    }}
+                    className="inline-flex items-center justify-center rounded-full hover:bg-black/10"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              {c.assignees.map((assignee) => (
+                <span key={assignee.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-700">
+                  <User className="w-3 h-3" />
+                  {assignee.name}
+                  <button
+                    type="button"
+                    title="Untag assignee"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onRemoveAssignee(c.id, assignee.id);
+                    }}
+                    className="inline-flex items-center justify-center rounded-full hover:bg-black/10"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {c.comment ? (
+            <p className="text-gray-700 leading-relaxed">{c.comment}</p>
+          ) : (
+            <p className="text-gray-500 italic">Tag only</p>
+          )}
           <button
+            type="button"
             onClick={() => onDelete(c.id)}
+            title="Untag"
             className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity"
           >
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
-      ))}
+      )})}
     </div>
   );
 }
@@ -930,11 +1254,12 @@ function CommentSidebar({ comments, onDelete }: CommentSidebarProps) {
 interface SummaryWithHighlightsProps {
   summary: string;
   comments: Comment[];
+  pendingSelection: SelectionInfo | null;
   containerRef: React.RefObject<HTMLDivElement>;
   onMouseUp: () => void;
 }
 
-function SummaryWithHighlights({ summary, comments, containerRef, onMouseUp }: SummaryWithHighlightsProps) {
+function SummaryWithHighlights({ summary, comments, pendingSelection, containerRef, onMouseUp }: SummaryWithHighlightsProps) {
   const buildHighlightedText = () => {
     if (comments.length === 0) return null;
     const sorted = [...comments].sort((a, b) => a.startOffset - b.startOffset);
@@ -943,7 +1268,9 @@ function SummaryWithHighlights({ summary, comments, containerRef, onMouseUp }: S
     for (const c of sorted) {
       if (c.startOffset > cursor) result += summary.slice(cursor, c.startOffset);
       const end = Math.min(c.endOffset, summary.length);
-      result += `<mark class="bg-yellow-200 rounded-sm">${summary.slice(c.startOffset, end)}</mark>`;
+      const primaryDepartment = c.departments[0] ?? c.assignees[0]?.team;
+      const style = getDepartmentStyle(primaryDepartment);
+      result += `<mark class="${style.markClass} rounded-sm">${summary.slice(c.startOffset, end)}</mark>`;
       cursor = end;
     }
     result += summary.slice(cursor);
@@ -956,7 +1283,7 @@ function SummaryWithHighlights({ summary, comments, containerRef, onMouseUp }: S
     <div
       ref={containerRef}
       onMouseUp={onMouseUp}
-      className="bg-white border border-gray-200 rounded-xl p-6 prose prose-sm max-w-none text-gray-800 select-text cursor-text"
+      className="relative bg-white border border-gray-200 rounded-xl p-6 prose prose-sm max-w-none text-gray-800 select-text cursor-text"
     >
       {highlighted ? (
         <div
@@ -965,6 +1292,23 @@ function SummaryWithHighlights({ summary, comments, containerRef, onMouseUp }: S
         />
       ) : (
         <SummaryMarkdown content={summary} />
+      )}
+
+      {pendingSelection && pendingSelection.rects.length > 0 && (
+        <div className="pointer-events-none absolute inset-0">
+          {pendingSelection.rects.map((rect, index) => (
+            <div
+              key={`${pendingSelection.startOffset}-${pendingSelection.endOffset}-${index}`}
+              className="absolute rounded-sm bg-indigo-200/70"
+              style={{
+                top: rect.top,
+                left: rect.left,
+                width: rect.width,
+                height: rect.height,
+              }}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -989,6 +1333,10 @@ export function TranscriptSummary() {
 
   const [comments, setComments] = useState<Comment[]>([]);
   const [pendingSelection, setPendingSelection] = useState<SelectionInfo | null>(null);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const commentsForRegeneration = comments.filter((c) => c.comment.trim().length > 0);
+  const draftStorageKey = id ? `${SUMMARY_DRAFT_STORAGE_PREFIX}${id}` : null;
+  const hasHydratedDraftRef = useRef(false);
 
   const summaryContainerRef = useRef<HTMLDivElement>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
@@ -1025,6 +1373,88 @@ export function TranscriptSummary() {
     loadExistingSummary();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // run once on mount only
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTeamMembers() {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/teams/members`);
+        if (!res.ok) return;
+
+        const data = await res.json();
+        if (!Array.isArray(data) || cancelled) return;
+
+        const normalized: TeamMember[] = data
+          .filter((item: unknown) => {
+            if (!item || typeof item !== 'object') return false;
+            const record = item as { team?: unknown };
+            return isDepartment(record.team);
+          })
+          .map((item: { id?: unknown; team: DepartmentName; name?: unknown; role?: unknown; email?: unknown }) => ({
+            id: typeof item.id === 'number' ? item.id : 0,
+            team: item.team,
+            name: typeof item.name === 'string' ? item.name : 'Unknown',
+            role: typeof item.role === 'string' ? item.role : '',
+            email: typeof item.email === 'string' ? item.email : '',
+          }))
+          .filter((member) => member.id > 0);
+
+        setTeamMembers(normalized);
+      } catch {
+        setTeamMembers([]);
+      }
+    }
+
+    loadTeamMembers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!draftStorageKey || !summary || hasHydratedDraftRef.current) return;
+
+    try {
+      const raw = localStorage.getItem(draftStorageKey);
+      if (!raw) {
+        hasHydratedDraftRef.current = true;
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as Partial<StoredSummaryDraft>;
+      if (parsed.summary !== summary || !Array.isArray(parsed.comments)) {
+        hasHydratedDraftRef.current = true;
+        return;
+      }
+
+      const normalized = parsed.comments
+        .map((item) => normalizeStoredComment(item))
+        .filter((item): item is Comment => item !== null);
+
+      setComments(normalized);
+    } catch {
+      // ignore invalid local draft payload
+    } finally {
+      hasHydratedDraftRef.current = true;
+    }
+  }, [draftStorageKey, summary]);
+
+  useEffect(() => {
+    if (!draftStorageKey || !summary || !hasHydratedDraftRef.current) return;
+
+    const payload: StoredSummaryDraft = {
+      summary,
+      comments,
+    };
+
+    try {
+      localStorage.setItem(draftStorageKey, JSON.stringify(payload));
+    } catch {
+      // ignore storage quota/access errors
+    }
+  }, [draftStorageKey, summary, comments]);
 
   // Dismiss comment bubble on outside click
   useEffect(() => {
@@ -1074,26 +1504,40 @@ export function TranscriptSummary() {
     if (!summaryContainerRef.current.contains(range.commonAncestorContainer)) return;
     const start = summary?.indexOf(selectedText) ?? -1;
     if (start === -1) return;
+
+    const containerRect = summaryContainerRef.current.getBoundingClientRect();
+    const rects = Array.from(range.getClientRects())
+      .filter((r) => r.width > 0 && r.height > 0)
+      .map((r) => ({
+        top: r.top - containerRect.top,
+        left: r.left - containerRect.left,
+        width: r.width,
+        height: r.height,
+      }));
+
     setPendingSelection({
       text: selectedText,
       startOffset: start,
       endOffset: start + selectedText.length,
       rect: range.getBoundingClientRect(),
+      rects,
     });
   }, [summary]);
 
   // TODO: for some reason after adding a comment, it's no longer
   // rendering the markdown.
-  const handleAddComment = (commentText: string) => {
+  const handleAddComment = (payload: NewCommentPayload) => {
     if (!pendingSelection) return;
     setComments((prev) => [
       ...prev,
       {
         id: generateId(),
         highlightedText: pendingSelection.text,
-        comment: commentText,
+        comment: payload.text,
         startOffset: pendingSelection.startOffset,
         endOffset: pendingSelection.endOffset,
+        departments: payload.departments,
+        assignees: payload.assignees,
       },
     ]);
     setPendingSelection(null);
@@ -1104,10 +1548,56 @@ export function TranscriptSummary() {
     setComments((prev) => prev.filter((c) => c.id !== commentId));
   };
 
+  const handleRemoveDepartmentTag = (commentId: string, department: DepartmentName) => {
+    setComments((prev) =>
+      prev.flatMap((comment) => {
+        if (comment.id !== commentId) return [comment];
+
+        const nextComment: Comment = {
+          ...comment,
+          departments: comment.departments.filter((item) => item !== department),
+        };
+
+        const hasText = nextComment.comment.trim().length > 0;
+        const hasDepartment = nextComment.departments.length > 0;
+        const hasAssignee = nextComment.assignees.length > 0;
+
+        if (!hasText && !hasDepartment && !hasAssignee) {
+          return [];
+        }
+
+        return [nextComment];
+      })
+    );
+  };
+
+  const handleRemoveAssigneeTag = (commentId: string, assigneeId: number) => {
+    setComments((prev) =>
+      prev.flatMap((comment) => {
+        if (comment.id !== commentId) return [comment];
+
+        const nextComment: Comment = {
+          ...comment,
+          assignees: comment.assignees.filter((assignee) => assignee.id !== assigneeId),
+        };
+
+        const hasText = nextComment.comment.trim().length > 0;
+        const hasDepartment = nextComment.departments.length > 0;
+        const hasAssignee = nextComment.assignees.length > 0;
+
+        if (!hasText && !hasDepartment && !hasAssignee) {
+          return [];
+        }
+
+        return [nextComment];
+      })
+    );
+  };
+
   // ---- Regenerate ----
 
   const handleDoneWithEdits = async () => {
-    if (!summary || comments.length === 0) return;
+    if (!summary || commentsForRegeneration.length === 0) return;
     setRegenerating(true);
     setRegenerateError(null);
     setRegenerateSuccess(false);
@@ -1115,7 +1605,7 @@ export function TranscriptSummary() {
       const res = await fetch(`${BACKEND_URL}/api/summarize/${id}/regenerate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ summary, comments }),
+        body: JSON.stringify({ summary, comments: commentsForRegeneration }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -1149,7 +1639,6 @@ export function TranscriptSummary() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.detail ?? `Request failed with status ${res.status}`);
       }
-      setComments([]);
       setPendingSelection(null);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save summary.');
@@ -1233,6 +1722,7 @@ export function TranscriptSummary() {
                     <SummaryWithHighlights
                       summary={summary}
                       comments={comments}
+                      pendingSelection={pendingSelection}
                       containerRef={summaryContainerRef}
                       onMouseUp={handleMouseUp}
                     />
@@ -1280,10 +1770,16 @@ export function TranscriptSummary() {
                         )}
                       </h3>
 
-                      <CommentSidebar comments={comments} onDelete={handleDeleteComment} />
+                      <CommentSidebar
+                        comments={comments}
+                        onDelete={handleDeleteComment}
+                        onRemoveDepartment={handleRemoveDepartmentTag}
+                        onRemoveAssignee={handleRemoveAssigneeTag}
+                      />
 
-                      {comments.length > 0 && (
+                      {commentsForRegeneration.length > 0 && (
                         <button
+                          type="button"
                           disabled={regenerating}
                           onClick={handleDoneWithEdits}
                           className="mt-4 w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium rounded-xl py-2.5 transition-colors"
@@ -1305,6 +1801,8 @@ export function TranscriptSummary() {
                       onAdd={handleAddComment}
                       onDismiss={() => setPendingSelection(null)}
                       bubbleRef={bubbleRef}
+                      departments={DEPARTMENTS}
+                      teamMembers={teamMembers}
                     />
                   )}
                 </div>
