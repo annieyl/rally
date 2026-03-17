@@ -5,10 +5,11 @@ import { TagChip } from './ui/TagChip';
 import { PrimaryButton } from './ui/PrimaryButton';
 import { StepProgress } from './ui/StepProgress';
 import { CheckCircle2, Loader2 } from 'lucide-react';
+import type { Step } from './ui/StepProgress';
 
 const departments = ['Frontend', 'Backend', 'Design', 'Business', 'DevOps', 'QA'];
 
-const steps = [
+const steps: Step[] = [
   { label: 'Chat Completed', status: 'completed' },
   { label: 'Transcript Generated', status: 'completed' },
   { label: 'Summary Created', status: 'completed' },
