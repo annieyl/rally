@@ -8,7 +8,7 @@ summarize_bp = Blueprint("summarize", __name__)
 # TODO: Make this read from prompts text file
 SUMMARIZE_PROMPT = """You are given a document that is a conversation between a product manager and a client. 
 
-Please summarize the contents of this document into a few paragraphs with the following headings:
+Please summarize the contents of this document into a few paragraphs with the following headings (please do the headings in bold and underline with a new line before and after the section title):
 
 - High-level goals/business objectives
     - Problem they are trying to solve
@@ -37,7 +37,7 @@ REGENERATE_PROMPT = """You are given:
 
 Your task is to produce an improved summary that incorporates the reviewer's feedback.
 For each comment, consider the highlighted text it refers to and revise that section accordingly.
-Keep the same heading structure as the original summary.
+Keep the same heading structure as the original summary (in bold and underline, not as a header in markdown, with a new line before and after the section title).
 
 ---
 TRANSCRIPT:
