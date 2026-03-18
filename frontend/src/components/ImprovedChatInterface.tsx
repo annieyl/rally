@@ -1,682 +1,3 @@
-// import { useState, useEffect, useRef, useCallback } from 'react';
-// import { useNavigate, useParams } from 'react-router';
-// import { Send, ArrowLeft, CheckCircle } from 'lucide-react';
-// import { StatusBadge } from './ui/StatusBadge';
-// import { PrimaryButton } from './ui/PrimaryButton';
-// import { SecondaryButton } from './ui/SecondaryButton';
-// import { saveChatMessage, fetchChatMessages, uploadTranscript } from '../api/transcript';
-
-// const API_BASE = 'http://localhost:8000/api';
-
-// interface Message {
-//   id: string | number;
-//   sender: 'ai' | 'client';
-//   text?: string;
-//   options?: string[];
-//   allowOther?: boolean;
-//   selectedOption?: string;
-//   customResponse?: string;
-//   inputType?: 'options' | 'text' | 'mixed';
-//   sections?: Array<{
-//     question: string;
-//     inputType: 'options' | 'text';
-//     options?: string[];
-//     allowOther?: boolean;
-//     selectedOption?: string;
-//     customResponse?: string;
-//   }>;
-//   timestamp: string;
-// }
-
-// const initialMessages: Message[] = [
-//   {
-//     id: '1',
-//     sender: 'ai',
-//     text: 'To start, what kind of project do you want to build?',
-//     inputType: 'text',
-//     timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-//   }
-// ];
-
-// export function ImprovedChatInterface() {
-//   const navigate = useNavigate();
-//   const { id: sessionId } = useParams();
-//   const [messages, setMessages] = useState<Message[]>(initialMessages);
-//   const [currentQuestionId, setCurrentQuestionId] = useState<string | number>('1');
-//   const [showOtherInput, setShowOtherInput] = useState(false);
-//   const [otherInputValue, setOtherInputValue] = useState('');
-//   const [textInputValue, setTextInputValue] = useState('');
-//   const [isLoading, setIsLoading] = useState(false);
-//   const [actualSessionId, setActualSessionId] = useState<string>(sessionId || Date.now().toString());
-//   const [projectTitle, setProjectTitle] = useState<string>('New Project');
-//   const hasLoadedRef = useRef(false);
-//   const messageIdCounterRef = useRef(0);
-//   const [sectionInputs, setSectionInputs] = useState<Record<number, string>>({});
-
-//   const fetchNextMessage = useCallback(async (userText: string) => {
-//     const response = await fetch(`${API_BASE}/chat`, {
-//       method: 'POST',
-//       headers: { 'Content-Type': 'application/json' },
-//       body: JSON.stringify({
-//         user_query: userText,
-//         session_id: actualSessionId
-//       })
-//     });
-
-//     if (!response.ok) {
-//       throw new Error('Failed to fetch next message');
-//     }
-
-//     const data = await response.json();
-//     const hasOptions = Array.isArray(data.options) && data.options.length > 0;
-//     const inputType: 'options' | 'text' | 'mixed' = data.input_type || (hasOptions ? 'options' : 'text');
-//     const normalizedOptions = hasOptions
-//       ? (data.options.includes('Other') ? data.options : [...data.options, 'Other'])
-//       : undefined;
-
-//     // Normalize sections if they exist
-//     const sections = data.sections?.map((section: any) => ({
-//       ...section,
-//       options: section.options?.includes('Other') ? section.options : [...(section.options || []), 'Other']
-//     })) || [];
-
-//     messageIdCounterRef.current += 1;
-//     const nextMessage: Message = {
-//       id: `ai-${Date.now()}-${messageIdCounterRef.current}`,
-//       sender: 'ai',
-//       text: data.response,
-//       options: normalizedOptions,
-//       allowOther: data.allow_other ?? Boolean(normalizedOptions),
-//       inputType,
-//       sections,
-//       timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-//     };
-
-//     return nextMessage;
-//   }, [actualSessionId]);
-
-
-//   const loadSessionMessages = useCallback(async () => {
-//     if (!sessionId) return;
-    
-//     try {
-//       setIsLoading(true);
-//       const dbMessages = await fetchChatMessages(sessionId);
-      
-//       if (dbMessages.length > 0) {
-//         // Convert DB messages to Message format
-//         const loadedMessages: Message[] = dbMessages.map(msg => ({
-//           id: msg.message_id,
-//           sender: msg.sender as 'ai' | 'client',
-//           text: msg.text,
-//           options: msg.options,
-//           allowOther: msg.allow_other,
-//           selectedOption: msg.selected_option,
-//           customResponse: msg.custom_response,
-//           inputType: msg.sender === 'ai' ? (msg.options?.length ? 'options' : 'text') : undefined,
-//           timestamp: new Date(msg.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-//         }));
-        
-//         setMessages(loadedMessages);
-        
-//         // Find the last unanswered AI message
-//         const lastUnansweredAI = loadedMessages.slice().reverse().find(m => 
-//           m.sender === 'ai' && !m.selectedOption
-//         );
-        
-//         if (lastUnansweredAI) {
-//           setCurrentQuestionId(lastUnansweredAI.id);
-//         }
-        
-//         console.log('[DEBUG] Loaded session messages:', loadedMessages);
-//       }
-//     } catch (error) {
-//       console.error('Failed to load session:', error);
-//     } finally {
-//       setIsLoading(false);
-//     }
-//   }, [sessionId]);
-
-//   // Load existing session on mount
-//   useEffect(() => {
-//     if (sessionId && sessionId !== 'new' && !hasLoadedRef.current) {
-//       hasLoadedRef.current = true;
-//       loadSessionMessages();
-//     } else if (!sessionId || sessionId === 'new') {
-//       setActualSessionId(Date.now().toString());
-//     }
-//   }, [sessionId, loadSessionMessages]);
-
-//   useEffect(() => {
-//     const shouldStart = !sessionId || sessionId === 'new';
-//     if (!shouldStart || messages.length > 0) return;
-
-//     // Just render the initial message, don't auto-load problem definition
-//     // Problem Definition will be loaded when user submits their first answer
-//   }, [sessionId, messages.length]);
-
-//   useEffect(() => {
-//     const firstClientResponse = messages.find(m => m.sender === 'client');
-//     if (firstClientResponse?.text) {
-//       setProjectTitle(firstClientResponse.text.substring(0, 40) + (firstClientResponse.text.length > 40 ? '...' : ''));
-//     }
-//   }, [messages]);
-
-//   // Auto-save messages
-//   const saveMessageToBackend = useCallback(async (message: Message) => {
-//     try {
-//       await saveChatMessage(actualSessionId, {
-//         message_id: String(message.id),
-//         sender: message.sender,
-//         text: message.text,
-//         options: message.options,
-//         allow_other: message.allowOther || false,
-//         selected_option: message.selectedOption,
-//         custom_response: message.customResponse
-//       });
-//     } catch (error) {
-//       console.error('Failed to save message:', error);
-//     }
-//   }, [actualSessionId]);
-
-//   // Save all messages periodically (only if user has responded)
-//   useEffect(() => {
-//     if (messages.length === 0) return;
-    
-//     // Only save if there's at least one user message (not just initial AI greeting)
-//     const hasUserResponse = messages.some(m => m.sender === 'client');
-//     if (!hasUserResponse) return;
-
-//     const saveAllMessages = async () => {
-//       for (const message of messages) {
-//         await saveMessageToBackend(message);
-//       }
-//     };
-
-//     const timer = setTimeout(() => {
-//       void saveAllMessages();
-//     }, 1000);
-
-//     return () => clearTimeout(timer);
-//   }, [messages, saveMessageToBackend]);
-
-//   useEffect(() => {
-//     if (messages.length === 0) return;
-
-//     const lastUnansweredAI = [...messages]
-//       .reverse()
-//       .find((m) => m.sender === 'ai' && !m.selectedOption && (m.options?.length || m.inputType === 'text'));
-
-//     if (lastUnansweredAI && lastUnansweredAI.id !== currentQuestionId) {
-//       setCurrentQuestionId(lastUnansweredAI.id);
-//     }
-//   }, [messages, currentQuestionId]);
-
-//   const handleOptionSelect = (messageId: string | number, option: string) => {
-//     if (option === 'Other') {
-//       setShowOtherInput(true);
-//       return;
-//     }
-
-//     // Update the message with selected option
-//     setMessages(prev => prev.map(msg => 
-//       msg.id === messageId 
-//         ? { ...msg, selectedOption: option }
-//         : msg
-//     ));
-
-//     // Add client response
-//     const clientResponse: Message = {
-//       id: `client-${Date.now()}`,
-//       sender: 'client',
-//       text: option,
-//       timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-//     };
-
-//     // Get next AI question based on selection
-//     setTimeout(async () => {
-//       try {
-//         setIsLoading(true);
-//         const nextQuestion = await fetchNextMessage(option);
-//         setMessages(prev => [...prev, clientResponse, nextQuestion]);
-//         setCurrentQuestionId(nextQuestion.id);
-//       } catch (error) {
-//         console.error('Failed to fetch next question:', error);
-//       } finally {
-//         setShowOtherInput(false);
-//         setIsLoading(false);
-//       }
-//     }, 300);
-//   };
-
-//   const handleOtherSubmit = (messageId: string | number) => {
-//     if (!otherInputValue.trim()) return;
-
-//     // Update the message with custom response
-//     setMessages(prev => prev.map(msg => 
-//       msg.id === messageId 
-//         ? { ...msg, selectedOption: 'Other', customResponse: otherInputValue }
-//         : msg
-//     ));
-
-//     // Add client response
-//     const clientResponse: Message = {
-//       id: `client-${Date.now()}`,
-//       sender: 'client',
-//       text: otherInputValue,
-//       timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-//     };
-
-//     // Get next AI question
-//     setTimeout(async () => {
-//       try {
-//         setIsLoading(true);
-//         const nextQuestion = await fetchNextMessage(otherInputValue);
-//         setMessages(prev => [...prev, clientResponse, nextQuestion]);
-//         setCurrentQuestionId(nextQuestion.id);
-//       } catch (error) {
-//         console.error('Failed to fetch next question:', error);
-//       } finally {
-//         setShowOtherInput(false);
-//         setOtherInputValue('');
-//         setIsLoading(false);
-//       }
-//     }, 300);
-//   };
-
-//   const handleTextSubmit = (messageId: string | number) => {
-//     if (!textInputValue.trim()) return;
-
-//     const responseText = textInputValue.trim();
-
-//     setMessages(prev => prev.map(msg =>
-//       msg.id === messageId
-//         ? { ...msg, selectedOption: 'Text', customResponse: responseText }
-//         : msg
-//     ));
-
-//     // Only create a separate client message if this is NOT the first question
-//     const isFirstQuestion = messageId === '1';
-
-//     setTimeout(async () => {
-//       try {
-//         setIsLoading(true);
-//         const nextQuestion = await fetchNextMessage(responseText);
-        
-//         if (isFirstQuestion) {
-//           // For first question, just add the next question (selected response is already in AI message)
-//           setMessages(prev => [...prev, nextQuestion]);
-//         } else {
-//           // For other questions, add client response + next question
-//           const clientResponse: Message = {
-//             id: `client-${Date.now()}`,
-//             sender: 'client',
-//             text: responseText,
-//             timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-//           };
-//           setMessages(prev => [...prev, clientResponse, nextQuestion]);
-//         }
-        
-//         setCurrentQuestionId(nextQuestion.id);
-//       } catch (error) {
-//         console.error('Failed to fetch next question:', error);
-//       } finally {
-//         setTextInputValue('');
-//         setIsLoading(false);
-//       }
-//     }, 300);
-//   };
-
-//   const handleSectionSubmit = () => {
-//     // Combine all section inputs into a single response
-//     const responses = Object.entries(sectionInputs)
-//       .sort(([keyA], [keyB]) => parseInt(keyA) - parseInt(keyB))
-//       .map(([_, value]) => value)
-//       .filter(v => v.trim())
-//       .join('\n');
-
-//     if (!responses.trim()) return;
-
-//     setTimeout(async () => {
-//       try {
-//         setIsLoading(true);
-//         const nextQuestion = await fetchNextMessage(responses);
-        
-//         const clientResponse: Message = {
-//           id: `client-${Date.now()}`,
-//           sender: 'client',
-//           text: responses,
-//           timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-//         };
-        
-//         setMessages(prev => [...prev, clientResponse, nextQuestion]);
-//         setCurrentQuestionId(nextQuestion.id);
-//         setSectionInputs({});
-//       } catch (error) {
-//         console.error('Failed to submit sections:', error);
-//       } finally {
-//         setIsLoading(false);
-//       }
-//     }, 300);
-//   };
-
-//   const handleBack = () => {
-//     navigate('/');
-//   };
-
-//   const handleComplete = async () => {
-//     try {
-//       setIsLoading(true);
-      
-//       // Only save if user has provided any responses
-//       const hasUserResponse = messages.some(m => m.sender === 'client');
-      
-//       if (hasUserResponse) {
-//         // Save final state
-//         for (const message of messages) {
-//           await saveMessageToBackend(message);
-//         }
-//         // Upload transcript
-//         await uploadTranscript(actualSessionId);
-//       }
-      
-//       navigate('/');
-//     } catch (error) {
-//       console.error('Save Error:', error);
-//     } finally {
-//       setIsLoading(false);
-//     }
-//   };
-
-//   const currentQuestion = messages.find((m) => m.id === currentQuestionId);
-
-//   return (
-//     <div className="h-full flex flex-col">
-//       {/* Header */}
-//       <div className="bg-white border-b border-gray-200 px-8 py-4">
-//         <div className="flex items-center gap-4 mb-3">
-//           <SecondaryButton onClick={handleBack}>
-//             <ArrowLeft className="w-4 h-4" />
-//             Back to Dashboard
-//           </SecondaryButton>
-//         </div>
-//         <div className="flex items-center justify-between">
-//           <div>
-//             <h1 className="text-2xl font-semibold text-gray-900 mb-1">
-//               {projectTitle}
-//             </h1>
-//             <div className="flex items-center gap-2">
-//               <StatusBadge status="active" />
-//               <span className="text-sm text-gray-500">Defining Requirements</span>
-//             </div>
-//           </div>
-//           <PrimaryButton onClick={handleComplete} disabled={isLoading}>
-//             {isLoading ? 'Saving...' : 'Complete & Save'}
-//           </PrimaryButton>
-//         </div>
-//       </div>
-
-//       {/* Chat Window */}
-//       <div className="flex-1 overflow-auto px-8 py-6 bg-[#F8F9FB] relative">
-//         {isLoading && (
-//           <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-6 p-4 bg-white rounded-lg border border-gray-200">
-//             <div className="animate-spin h-4 w-4 border-2 border-indigo-600 border-t-transparent rounded-full"></div>
-//             <span>Loading...</span>
-//           </div>
-//         )}
-//         <div className="max-w-4xl mx-auto space-y-6">
-//           {messages.map((message) => (
-//             <div key={message.id}>
-//               {message.sender === 'ai' ? (
-//                 <div className="flex justify-start">
-//                   <div className="max-w-3xl">
-//                     {/* AI Message */}
-//                     <div className="bg-white border border-gray-200 rounded-lg px-5 py-4 shadow-sm">
-//                       <div className="flex items-center gap-2 mb-3">
-//                         <div className="w-6 h-6 bg-indigo-600 rounded-full flex items-center justify-center">
-//                           <span className="text-white text-xs font-bold">AI</span>
-//                         </div>
-//                         <span className="text-xs text-gray-400">{message.timestamp}</span>
-//                       </div>
-//                       <p className="text-sm text-gray-900 leading-relaxed mb-4">
-//                         {message.text}
-//                       </p>
-                      
-//                       {/* Multiple Sections (for Problem Definition etc) */}
-//                       {message.inputType === 'mixed' && message.sections && message.id === currentQuestionId && (
-//                         <div className="space-y-6 mt-4 pt-4 border-t border-gray-200">
-//                           {message.sections.map((section, sectionIdx) => (
-//                             <div key={sectionIdx} className="space-y-2">
-//                               <h3 className="text-sm font-semibold text-gray-900">{section.question}</h3>
-                              
-//                               {section.inputType === 'options' && section.options && (
-//                                 <div className="space-y-2">
-//                                   {section.options.map((option, optIdx) => (
-//                                     <button
-//                                       key={optIdx}
-//                                       onClick={() => setSectionInputs(prev => ({ ...prev, [sectionIdx]: option }))}
-//                                       className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-all ${
-//                                         sectionInputs[sectionIdx] === option
-//                                           ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
-//                                           : option === 'Other'
-//                                           ? 'border-gray-300 bg-gray-50 hover:border-indigo-400 hover:bg-indigo-50 text-gray-700'
-//                                           : 'border-gray-200 bg-white hover:border-indigo-500 hover:bg-indigo-50 text-gray-900'
-//                                       } font-medium text-sm`}
-//                                     >
-//                                       {option}
-//                                     </button>
-//                                   ))}
-//                                 </div>
-//                               )}
-                              
-//                               {section.inputType === 'text' && (
-//                                 <input
-//                                   type="text"
-//                                   value={sectionInputs[sectionIdx] || ''}
-//                                   onChange={(e) => setSectionInputs(prev => ({ ...prev, [sectionIdx]: e.target.value }))}
-//                                   placeholder="Type your answer here..."
-//                                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-//                                 />
-//                               )}
-//                             </div>
-//                           ))}
-                          
-//                           <button
-//                             onClick={() => handleSectionSubmit()}
-//                             disabled={isLoading}
-//                             className="w-full px-4 py-3 mt-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-gray-400 font-medium text-sm"
-//                           >
-//                             {isLoading ? 'Submitting...' : 'Continue'}
-//                           </button>
-//                         </div>
-//                       )}
-                      
-//                       {/* Single Options */}
-//                       {message.inputType === 'options' && message.options && !message.selectedOption && message.id === currentQuestionId && (
-//                         <div className="space-y-2">
-//                           {message.options.map((option, idx) => (
-//                             <button
-//                               key={idx}
-//                               onClick={() => handleOptionSelect(message.id, option)}
-//                               className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-all ${
-//                                 option === 'Other'
-//                                   ? 'border-gray-300 bg-gray-50 hover:border-indigo-400 hover:bg-indigo-50 text-gray-700'
-//                                   : 'border-gray-200 bg-white hover:border-indigo-500 hover:bg-indigo-50 text-gray-900'
-//                               } font-medium text-sm`}
-//                             >
-//                               {option}
-//                             </button>
-//                           ))}
-                          
-//                           {/* Other Input Field */}
-//                           {showOtherInput && message.allowOther && (
-//                             <div className="mt-4 pt-4 border-t border-gray-200">
-//                               <label className="block text-sm font-medium text-gray-700 mb-2">
-//                                 Please specify:
-//                               </label>
-//                               <div className="flex gap-2">
-//                                 <input
-//                                   type="text"
-//                                   value={otherInputValue}
-//                                   onChange={(e) => setOtherInputValue(e.target.value)}
-//                                   onKeyPress={(e) => {
-//                                     if (e.key === 'Enter') {
-//                                       handleOtherSubmit(message.id);
-//                                     }
-//                                   }}
-//                                   placeholder="Type your answer here..."
-//                                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-//                                   autoFocus
-//                                 />
-//                                 <button
-//                                   onClick={() => handleOtherSubmit(message.id)}
-//                                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-//                                 >
-//                                   <Send className="w-4 h-4" />
-//                                 </button>
-//                               </div>
-//                             </div>
-//                           )}
-//                         </div>
-//                       )}
-
-//                       {message.inputType === 'text' && !message.selectedOption && message.id === currentQuestionId && (
-//                         <div className="mt-4 pt-4 border-t border-gray-200">
-//                           <label className="block text-sm font-medium text-gray-700 mb-2">
-//                             Your answer:
-//                           </label>
-//                           <div className="flex gap-2">
-//                             <input
-//                               type="text"
-//                               value={textInputValue}
-//                               onChange={(e) => setTextInputValue(e.target.value)}
-//                               onKeyPress={(e) => {
-//                                 if (e.key === 'Enter') {
-//                                   handleTextSubmit(message.id);
-//                                 }
-//                               }}
-//                               placeholder="Type your answer here..."
-//                               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-//                             />
-//                             <button
-//                               onClick={() => handleTextSubmit(message.id)}
-//                               className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-//                             >
-//                               <Send className="w-4 h-4" />
-//                             </button>
-//                           </div>
-//                         </div>
-//                       )}
-
-//                       {/* Selected Option Display */}
-//                       {message.selectedOption && (
-//                         <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 px-3 py-2 rounded-lg">
-//                           <CheckCircle className="w-4 h-4" />
-//                           <span>
-//                             <strong>Selected:</strong> {message.selectedOption}
-//                             {message.customResponse && ` - ${message.customResponse}`}
-//                           </span>
-//                         </div>
-//                       )}
-
-//                       {/* Fallback: Show text input for any unanswered question without explicit inputType */}
-//                       {!message.inputType && !message.selectedOption && message.id === currentQuestionId && message.sender === 'ai' && (
-//                         <div className="mt-4 pt-4 border-t border-gray-200">
-//                           <label className="block text-sm font-medium text-gray-700 mb-2">
-//                             Your answer:
-//                           </label>
-//                           <div className="flex gap-2">
-//                             <input
-//                               type="text"
-//                               value={textInputValue}
-//                               onChange={(e) => setTextInputValue(e.target.value)}
-//                               onKeyPress={(e) => {
-//                                 if (e.key === 'Enter') {
-//                                   handleTextSubmit(message.id);
-//                                 }
-//                               }}
-//                               placeholder="Type your answer here..."
-//                               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-//                             />
-//                             <button
-//                               onClick={() => handleTextSubmit(message.id)}
-//                               className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-//                             >
-//                               <Send className="w-4 h-4" />
-//                             </button>
-//                           </div>
-//                         </div>
-//                       )}
-//                     </div>
-//                   </div>
-//                 </div>
-//               ) : (
-//                 /* Client Response */
-//                 <div className="flex justify-end">
-//                   <div className="max-w-2xl">
-//                     <div className="bg-indigo-600 text-white rounded-lg px-5 py-3 shadow-sm">
-//                       <p className="text-sm leading-relaxed">{message.text}</p>
-//                     </div>
-//                     <div className="flex justify-end items-center gap-2 mt-1 px-2">
-//                       <span className="text-xs text-gray-400">{message.timestamp}</span>
-//                     </div>
-//                   </div>
-//                 </div>
-//               )}
-//             </div>
-//           ))}
-//         </div>
-//       </div>
-
-//       {/* Input Area */}
-//       <div className="bg-white border-t border-gray-200 px-8 py-6">
-//         <div className="max-w-4xl mx-auto">
-//           {currentQuestion?.inputType === 'options' ? (
-//             <div className="text-sm text-gray-500">
-//               Select an option above, or choose “Other” to type a custom response.
-//             </div>
-//           ) : (
-//             <div className="flex items-end gap-3">
-//               <div className="flex-1">
-//                 <input
-//                   type="text"
-//                   value={textInputValue}
-//                   onChange={(e) => setTextInputValue(e.target.value)}
-//                   onKeyPress={(e) => {
-//                     if (e.key === 'Enter') {
-//                       handleTextSubmit(currentQuestion?.id ?? '');
-//                     }
-//                   }}
-//                   placeholder="Type your response..."
-//                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-//                 />
-//               </div>
-//               <button
-//                 onClick={() => handleTextSubmit(currentQuestion?.id ?? '')}
-//                 className="px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-//               >
-//                 <Send className="w-4 h-4" />
-//               </button>
-//             </div>
-//           )}
-//         </div>
-//       </div>
-
-//       {/* Info Footer */}
-//       <div className="bg-white border-t border-gray-200 px-8 py-4">
-//         <div className="max-w-4xl mx-auto">
-//           <div className="flex items-center gap-2 text-xs text-gray-500">
-//             <CheckCircle className="w-4 h-4 text-green-600" />
-//             <span>
-//               Your responses are automatically saved. Refresh the page anytime - your progress will be preserved.
-//             </span>
-//           </div>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Send, ArrowLeft, CheckCircle } from 'lucide-react';
@@ -687,6 +8,17 @@ import { uploadTranscript, fetchSessionDetail, getTranscript } from '../api/tran
 
 const API_BASE = 'http://localhost:8000/api';
 
+interface Section {
+  question: string;
+  inputType: 'options' | 'text';
+  options?: string[];
+  allowOther?: boolean;
+  selectedOption?: string;
+  customResponse?: string;
+  // Persisted answer shown after submission
+  answer?: string;
+}
+
 interface Message {
   id: string | number;
   sender: 'ai' | 'client';
@@ -696,14 +28,7 @@ interface Message {
   selectedOption?: string;
   customResponse?: string;
   inputType?: 'options' | 'text' | 'mixed';
-  sections?: Array<{
-    question: string;
-    inputType: 'options' | 'text';
-    options?: string[];
-    allowOther?: boolean;
-    selectedOption?: string;
-    customResponse?: string;
-  }>;
+  sections?: Section[];
   timestamp: string;
 }
 
@@ -739,7 +64,7 @@ export function ImprovedChatInterface() {
       body: JSON.stringify({
         user_query: userText,
         session_id: actualSessionId,
-        question: question,
+        question,
         selected_option: selectedOption
       })
     });
@@ -758,15 +83,12 @@ export function ImprovedChatInterface() {
       options: section.options?.includes('Other') ? section.options : [...(section.options || []), 'Other']
     })) || [];
 
-    // Update project title if provided by backend
-    if (data.session_title) {
-      setProjectTitle(data.session_title);
-    }
+    if (data.session_title) setProjectTitle(data.session_title);
 
     messageIdCounterRef.current += 1;
-    const nextMessage: Message = {
+    return {
       id: `ai-${Date.now()}-${messageIdCounterRef.current}`,
-      sender: 'ai',
+      sender: 'ai' as const,
       text: data.response,
       options: normalizedOptions,
       allowOther: data.allow_other ?? Boolean(normalizedOptions),
@@ -774,81 +96,51 @@ export function ImprovedChatInterface() {
       sections,
       timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     };
-
-    return nextMessage;
   }, [actualSessionId]);
 
   // ---------------------------------------------------------------------------
-  // Session restore — load from transcript JSON (source of truth)
+  // Session restore
   // ---------------------------------------------------------------------------
 
   const loadSessionMessages = useCallback(async () => {
     if (!sessionId || sessionId === 'new') return;
-
     try {
       setIsLoading(true);
-
       const sessionData = await fetchSessionDetail(sessionId);
-      if (!sessionData?.transcript_url) {
-        console.log('[DEBUG] No transcript URL found for session', sessionId);
-        return;
-      }
-
-      if (sessionData.title) {
-        setProjectTitle(sessionData.title);
-      }
+      if (!sessionData?.transcript_url) return;
+      if (sessionData.title) setProjectTitle(sessionData.title);
 
       const transcript = await getTranscript(sessionData.transcript_url);
-      if (!transcript || transcript.length === 0) {
-        console.log('[DEBUG] Empty transcript for session', sessionId);
-        return;
-      }
+      if (!transcript || transcript.length === 0) return;
 
-      // Transcript entries are {role: 'bot'|'user', message: string}.
-      // Convert them into the Message shape used by this component.
-      // All restored messages are treated as already-answered (no active input UI).
       const restored: Message[] = transcript.map((entry, idx) => {
         const isAI = entry.role === 'bot';
         const message = entry.message;
-        
-        // Parse sections from the message text if they exist
-        // Sections are formatted as "1. Question?\n2. Question?\n..."
-        const sections: Array<{
-          question: string;
-          inputType: 'text' | 'options';
-          options: string[];
-          allowOther: boolean;
-        }> = [];
+        const sections: Section[] = [];
         const lines = message.split('\n');
         let mainText = message;
-        
+
         if (isAI) {
-          // Extract numbered questions as sections
           const questionLines = lines.filter(line => /^\d+\.\s/.test(line.trim()));
           if (questionLines.length > 0) {
-            // Find where questions start to split text from questions
             const firstQuestionIdx = lines.findIndex(line => /^\d+\.\s/.test(line.trim()));
             mainText = lines.slice(0, firstQuestionIdx).join('\n').trim();
-            
-            // Parse each question as a section
             questionLines.forEach((line) => {
-              const question = line.replace(/^\d+\.\s/, '').trim();
               sections.push({
-                question,
-                inputType: 'text' as const,
+                question: line.replace(/^\d+\.\s/, '').trim(),
+                inputType: 'text',
                 options: [],
                 allowOther: false
               });
             });
           }
         }
-        
+
         return {
           id: `restored-${idx}`,
           sender: isAI ? 'ai' : 'client',
           text: mainText,
           sections: sections.length > 0 ? sections : undefined,
-          // Mark every restored AI message as answered so no input UI renders for it
           selectedOption: isAI ? 'restored' : undefined,
           inputType: sections.length > 0 ? 'mixed' : isAI ? 'text' : undefined,
           timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
@@ -857,19 +149,13 @@ export function ImprovedChatInterface() {
 
       setMessages(restored);
 
-      // The last AI message should accept new input — remove its selectedOption
-      // so the input field renders for it.
       const lastAIIdx = [...restored].map((m, i) => ({ m, i })).reverse().find(({ m }) => m.sender === 'ai')?.i;
       if (lastAIIdx !== undefined) {
         setMessages(prev =>
-          prev.map((msg, idx) =>
-            idx === lastAIIdx ? { ...msg, selectedOption: undefined } : msg
-          )
+          prev.map((msg, idx) => idx === lastAIIdx ? { ...msg, selectedOption: undefined } : msg)
         );
         setCurrentQuestionId(restored[lastAIIdx].id);
       }
-
-      console.log('[DEBUG] Restored', restored.length, 'messages from transcript');
     } catch (error) {
       console.error('Failed to load session history:', error);
     } finally {
@@ -894,11 +180,9 @@ export function ImprovedChatInterface() {
 
   useEffect(() => {
     if (messages.length === 0) return;
-
     const lastUnansweredAI = [...messages]
       .reverse()
       .find((m) => m.sender === 'ai' && !m.selectedOption && (m.options?.length || m.inputType === 'text' || !m.inputType));
-
     if (lastUnansweredAI && lastUnansweredAI.id !== currentQuestionId) {
       setCurrentQuestionId(lastUnansweredAI.id);
     }
@@ -909,194 +193,117 @@ export function ImprovedChatInterface() {
   // ---------------------------------------------------------------------------
 
   const handleOptionSelect = (messageId: string | number, option: string) => {
-    if (option === 'Other') {
-      setShowOtherInput(true);
-      return;
-    }
-
-    // Get the question text from the message
+    if (option === 'Other') { setShowOtherInput(true); return; }
     const currentMsg = messages.find(m => m.id === messageId);
-    const questionText = currentMsg?.text || '';
-
-    setMessages(prev => prev.map(msg =>
-      msg.id === messageId ? { ...msg, selectedOption: option } : msg
-    ));
-
+    setMessages(prev => prev.map(msg => msg.id === messageId ? { ...msg, selectedOption: option } : msg));
     const clientResponse: Message = {
-      id: `client-${Date.now()}`,
-      sender: 'client',
-      text: option,
+      id: `client-${Date.now()}`, sender: 'client', text: option,
       timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     };
-
     setTimeout(async () => {
       try {
         setIsLoading(true);
-        const nextQuestion = await fetchNextMessage(option, questionText, option);
+        const nextQuestion = await fetchNextMessage(option, currentMsg?.text || '', option);
         setMessages(prev => [...prev, clientResponse, nextQuestion]);
         setCurrentQuestionId(nextQuestion.id);
         await uploadTranscript(actualSessionId);
-      } catch (error) {
-        console.error('Failed to fetch next question:', error);
-      } finally {
-        setShowOtherInput(false);
-        setIsLoading(false);
-      }
+      } catch (error) { console.error('Failed to fetch next question:', error); }
+      finally { setShowOtherInput(false); setIsLoading(false); }
     }, 300);
   };
 
   const handleOtherSubmit = (messageId: string | number) => {
     if (!otherInputValue.trim()) return;
-
-    // Get the question text from the message
     const currentMsg = messages.find(m => m.id === messageId);
-    const questionText = currentMsg?.text || '';
-
-    setMessages(prev => prev.map(msg =>
-      msg.id === messageId ? { ...msg, selectedOption: 'Other', customResponse: otherInputValue } : msg
-    ));
-
+    setMessages(prev => prev.map(msg => msg.id === messageId ? { ...msg, selectedOption: 'Other', customResponse: otherInputValue } : msg));
     const clientResponse: Message = {
-      id: `client-${Date.now()}`,
-      sender: 'client',
-      text: otherInputValue,
+      id: `client-${Date.now()}`, sender: 'client', text: otherInputValue,
       timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     };
-
     setTimeout(async () => {
       try {
         setIsLoading(true);
-        const nextQuestion = await fetchNextMessage(otherInputValue, questionText, 'Other');
+        const nextQuestion = await fetchNextMessage(otherInputValue, currentMsg?.text || '', 'Other');
         setMessages(prev => [...prev, clientResponse, nextQuestion]);
         setCurrentQuestionId(nextQuestion.id);
         await uploadTranscript(actualSessionId);
-      } catch (error) {
-        console.error('Failed to fetch next question:', error);
-      } finally {
-        setShowOtherInput(false);
-        setOtherInputValue('');
-        setIsLoading(false);
-      }
+      } catch (error) { console.error('Failed to fetch next question:', error); }
+      finally { setShowOtherInput(false); setOtherInputValue(''); setIsLoading(false); }
     }, 300);
   };
 
   const handleTextSubmit = (messageId: string | number) => {
     if (!textInputValue.trim()) return;
-
     const responseText = textInputValue.trim();
-
-    setMessages(prev => prev.map(msg =>
-      msg.id === messageId ? { ...msg, selectedOption: 'Text', customResponse: responseText } : msg
-    ));
-
-    const isFirstQuestion = messageId === '1';
-
+    setMessages(prev => prev.map(msg => msg.id === messageId ? { ...msg, selectedOption: 'Text', customResponse: responseText } : msg));
     setTimeout(async () => {
       try {
         setIsLoading(true);
-        
-        // For the first question, don't send the greeting text, just the user's actual answer
         const nextQuestion = await fetchNextMessage(responseText);
-
-        if (isFirstQuestion) {
-          // For first question: add a client message with the user's input, then the AI response
-          const clientResponse: Message = {
-            id: `client-${Date.now()}`,
-            sender: 'client',
-            text: responseText,
-            timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-          };
-          setMessages(prev => [...prev, clientResponse, nextQuestion]);
-        } else {
-          const clientResponse: Message = {
-            id: `client-${Date.now()}`,
-            sender: 'client',
-            text: responseText,
-            timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-          };
-          setMessages(prev => [...prev, clientResponse, nextQuestion]);
-        }
-
+        const clientResponse: Message = {
+          id: `client-${Date.now()}`, sender: 'client', text: responseText,
+          timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+        };
+        setMessages(prev => [...prev, clientResponse, nextQuestion]);
         setCurrentQuestionId(nextQuestion.id);
         setTextInputValue('');
         await uploadTranscript(actualSessionId);
-      } catch (error) {
-        console.error('Failed to fetch next question:', error);
-      } finally {
-        setIsLoading(false);
-      }
+      } catch (error) { console.error('Failed to fetch next question:', error); }
+      finally { setIsLoading(false); }
     }, 300);
   };
 
   const handleSectionSubmit = () => {
-    // Collect all section inputs with their questions for context
     const currentMsg = messages.find(m => m.id === currentQuestionId);
     const sections = currentMsg?.sections || [];
-    
-    // Build the complete question text (all questions from the current message)
-    const allQuestions = sections
-      .map((section, idx) => `${idx + 1}. ${section.question}`)
-      .join('\n');
-    
-    // Build formatted responses - just the answers with "A:" prefix, with spacing between
+
+    const allQuestions = sections.map((s, i) => `${i + 1}. ${s.question}`).join('\n');
     const responses = Object.entries(sectionInputs)
-      .sort(([keyA], [keyB]) => parseInt(keyA) - parseInt(keyB))
-      .map(([, value]) => `A: ${value}`)
+      .sort(([a], [b]) => parseInt(a) - parseInt(b))
+      .map(([, v]) => `A: ${v}`)
       .filter(v => v.trim())
       .join('\n\n');
 
     if (!responses.trim()) return;
 
-    console.log('[DEBUG] Section Submit:', {
-      allQuestions,
-      responses,
-      sessionId: actualSessionId
-    });
-
-    // Mark the current message as answered
-    setMessages(prev => prev.map(msg =>
-      msg.id === currentQuestionId
-        ? { ...msg, selectedOption: 'answered' }
-        : msg
-    ));
+    // Persist the typed answers onto each section so they render after submission
+    setMessages(prev => prev.map(msg => {
+      if (msg.id !== currentQuestionId) return msg;
+      return {
+        ...msg,
+        selectedOption: 'answered',
+        sections: msg.sections?.map((section, idx) => ({
+          ...section,
+          answer: sectionInputs[idx] ?? '',
+        })),
+      };
+    }));
 
     setTimeout(async () => {
       try {
         setIsLoading(true);
-        // Pass the complete question and formatted response to backend
         const nextQuestion = await fetchNextMessage(responses, allQuestions, responses);
-
         const clientResponse: Message = {
-          id: `client-${Date.now()}`,
-          sender: 'client',
-          text: responses,
+          id: `client-${Date.now()}`, sender: 'client', text: responses,
           timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
         };
-
         setMessages(prev => [...prev, clientResponse, nextQuestion]);
         setCurrentQuestionId(nextQuestion.id);
         setSectionInputs({});
         await uploadTranscript(actualSessionId);
-      } catch (error) {
-        console.error('Failed to submit sections:', error);
-      } finally {
-        setIsLoading(false);
-      }
+      } catch (error) { console.error('Failed to submit sections:', error); }
+      finally { setIsLoading(false); }
     }, 300);
   };
 
   const handleBack = () => navigate('/');
-
   const handleComplete = async () => {
     try {
       setIsLoading(true);
       await uploadTranscript(actualSessionId);
       navigate('/');
-    } catch (error) {
-      console.error('Save Error:', error);
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (error) { console.error('Save Error:', error); }
+    finally { setIsLoading(false); }
   };
 
   const currentQuestion = messages.find((m) => m.id === currentQuestionId);
@@ -1152,14 +359,21 @@ export function ImprovedChatInterface() {
                       </div>
                       <p className="text-sm text-gray-900 leading-relaxed mb-4">{message.text}</p>
 
-                      {/* Multiple Sections - Show if current question OR already answered */}
+                      {/* Multiple Sections */}
                       {message.inputType === 'mixed' && message.sections && (
                         <div className="space-y-6 mt-4 pt-4 border-t border-gray-200">
                           {message.sections.map((section, sectionIdx) => (
                             <div key={sectionIdx} className="space-y-2">
                               <h3 className="text-sm font-semibold text-gray-900">{section.question}</h3>
-                              
-                              {/* Only show inputs if this is the current question and not answered */}
+
+                              {/* Answered state — show the typed answer inline */}
+                              {message.selectedOption && section.answer !== undefined && (
+                                <p className="text-sm text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
+                                  {section.answer}
+                                </p>
+                              )}
+
+                              {/* Active input — only for current unanswered message */}
                               {message.id === currentQuestionId && !message.selectedOption && (
                                 <>
                                   {section.inputType === 'options' && section.options && (
@@ -1194,11 +408,10 @@ export function ImprovedChatInterface() {
                               )}
                             </div>
                           ))}
-                          
-                          {/* Show submit button only if current question and not answered */}
+
                           {message.id === currentQuestionId && !message.selectedOption && (
                             <button
-                              onClick={() => handleSectionSubmit()}
+                              onClick={handleSectionSubmit}
                               disabled={isLoading}
                               className="w-full px-4 py-3 mt-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-gray-400 font-medium text-sm"
                             >
@@ -1237,10 +450,7 @@ export function ImprovedChatInterface() {
                                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
                                   autoFocus
                                 />
-                                <button
-                                  onClick={() => handleOtherSubmit(message.id)}
-                                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-                                >
+                                <button onClick={() => handleOtherSubmit(message.id)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
                                   <Send className="w-4 h-4" />
                                 </button>
                               </div>
@@ -1262,18 +472,15 @@ export function ImprovedChatInterface() {
                               placeholder="Type your answer here..."
                               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
                             />
-                            <button
-                              onClick={() => handleTextSubmit(message.id)}
-                              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-                            >
+                            <button onClick={() => handleTextSubmit(message.id)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
                               <Send className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
                       )}
 
-                      {/* Selected option display — skip for 'restored' marker */}
-                      {message.selectedOption && message.selectedOption !== 'restored' && (
+                      {/* Selected option display — skip internal markers */}
+                      {message.selectedOption && !['restored', 'answered', 'Text'].includes(message.selectedOption) && (
                         <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 px-3 py-2 rounded-lg">
                           <CheckCircle className="w-4 h-4" />
                           <span>
@@ -1306,9 +513,7 @@ export function ImprovedChatInterface() {
       <div className="bg-white border-t border-gray-200 px-8 py-6">
         <div className="max-w-4xl mx-auto">
           {currentQuestion?.inputType === 'options' ? (
-            <div className="text-sm text-gray-500">
-              Select an option above, or choose "Other" to type a custom response.
-            </div>
+            <div className="text-sm text-gray-500">Select an option above, or choose "Other" to type a custom response.</div>
           ) : (
             <div className="flex items-end gap-3">
               <div className="flex-1">
@@ -1316,17 +521,12 @@ export function ImprovedChatInterface() {
                   type="text"
                   value={textInputValue}
                   onChange={(e) => setTextInputValue(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') handleTextSubmit(currentQuestion?.id ?? '');
-                  }}
+                  onKeyPress={(e) => { if (e.key === 'Enter') handleTextSubmit(currentQuestion?.id ?? ''); }}
                   placeholder="Type your response..."
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
                 />
               </div>
-              <button
-                onClick={() => handleTextSubmit(currentQuestion?.id ?? '')}
-                className="px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-              >
+              <button onClick={() => handleTextSubmit(currentQuestion?.id ?? '')} className="px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
                 <Send className="w-4 h-4" />
               </button>
             </div>
