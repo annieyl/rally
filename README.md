@@ -1,14 +1,13 @@
 # Rally
 
-A full-stack application combining a React frontend, Python Flask backend, and worker service for AI-powered chat and transcript processing using Google Gemini.
+A full-stack application combining a React frontend and Python Flask backend for AI-powered chat and transcript processing using Google Gemini.
 
 ## Project Structure
 
 ```
 rally/
 ├── backend/           # Flask API server
-├── frontend/          # React web application
-└── worker/            # Background job processor
+└── frontend/          # React web application
 ```
 
 ## Prerequisites
@@ -16,6 +15,64 @@ rally/
 - **Python 3.8+**
 - **Node.js 14+** and npm
 - **Google API Key** (for Gemini API access)
+
+## Quick Start (Shared Supabase)
+
+Use this if you want the fastest onboarding without creating a Python virtual environment.
+
+### 1) Install dependencies
+
+```bash
+# Backend
+cd backend
+pip3 install -r requirements.txt
+
+# Frontend
+cd ../frontend
+npm install
+```
+
+### 2) Configure backend environment
+
+Create or update `backend/.env`:
+
+```env
+GOOGLE_API_KEY=your_google_api_key
+SUPABASE_URL=your_shared_supabase_project_url
+SUPABASE_KEY=your_shared_supabase_service_or_project_key
+```
+
+### 3) Configure frontend environment
+
+Create `frontend/.env.local`:
+
+```env
+VITE_BACKEND_URL=http://localhost:8000
+VITE_SUPABASE_URL=your_shared_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_shared_supabase_anon_key
+```
+
+### 4) One-time shared Supabase setup (if not already initialized)
+
+In Supabase SQL Editor, run:
+- `backend/migrations/001_initial_schema.sql`
+- `backend/migrations/002_team_members.sql`
+
+In Supabase Storage, ensure bucket `transcripts` exists.
+
+### 5) Run the app
+
+```bash
+# Terminal 1
+cd backend
+python3 app.py
+
+# Terminal 2
+cd frontend
+npm run dev
+```
+
+Open the frontend URL shown by Vite (usually `http://localhost:5173`).
 
 ## Setup Instructions
 
@@ -61,7 +118,7 @@ npm install -D tailwindcss @tailwindcss/vite
 
 ## Running the Application
 
-### 0. Activate virtual environment
+### 0. (Optional) Activate virtual environment
 Windows: `.venv\Scripts\activate`
 MacOS: `source .venv/bin/activate`
 
@@ -116,7 +173,6 @@ GOOGLE_API_KEY=your_google_api_key_here
 
 - **Backend**: Edit files in `backend/routes/` and `backend/services/`
 - **Frontend**: Edit files in `frontend/src/`
-- **Worker**: Edit workflow in `worker/graph/nodes/`
 
 ## Troubleshooting
 

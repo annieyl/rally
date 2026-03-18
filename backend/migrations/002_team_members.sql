@@ -1,5 +1,5 @@
--- Migration: add team_members table
--- Run this in your Supabase SQL Editor
+-- Migration 002: Team members table
+-- Run after 001_initial_schema.sql.
 
 CREATE TABLE IF NOT EXISTS team_members (
   id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
@@ -12,5 +12,5 @@ CREATE TABLE IF NOT EXISTS team_members (
 
 CREATE INDEX IF NOT EXISTS idx_team_members_team ON team_members(team);
 
--- Disable RLS for now (enable and add policies if you add auth later)
+-- Keep disabled for now (no app-level auth/RLS policy yet)
 ALTER TABLE team_members DISABLE ROW LEVEL SECURITY;

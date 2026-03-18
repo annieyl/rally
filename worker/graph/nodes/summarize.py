@@ -1,1 +1,0 @@
-# summarize into scoping notes

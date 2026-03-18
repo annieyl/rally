@@ -1,12 +1,10 @@
-// import { useState, useRef, useCallback, useEffect } from 'react';
-import { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { createClient } from '@supabase/supabase-js';
 import ReactMarkdown from 'react-markdown';
 import { PrimaryButton } from './ui/PrimaryButton';
 import { SecondaryButton } from './ui/SecondaryButton';
 import { ArrowLeft, Loader2, AlertCircle, Sparkles, MessageSquare, X, CheckCircle2, Tag, User } from 'lucide-react';
-import { marked } from 'marked';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000';
 
@@ -131,85 +129,6 @@ interface SelectionInfo {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function clearHighlights(container: HTMLElement) {
-  container.querySelectorAll('mark[data-highlight]').forEach((mark) => {
-    const parent = mark.parentNode;
-    if (!parent) return;
-    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
-    parent.removeChild(mark);
-  });
-  container.normalize();
-}
-
-function getTextNodes(container: HTMLElement): Array<{ node: Text; start: number; end: number }> {
-  const result: Array<{ node: Text; start: number; end: number }> = [];
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  let offset = 0;
-  let node = walker.nextNode() as Text | null;
-  while (node) {
-    const len = node.textContent?.length ?? 0;
-    result.push({ node, start: offset, end: offset + len });
-    offset += len;
-    node = walker.nextNode() as Text | null;
-  }
-  return result;
-}
-
-function applyHighlights(
-  container: HTMLElement,
-  ranges: Array<{ start: number; end: number; className: string }>
-) {
-  clearHighlights(container);
-  if (ranges.length === 0) return;
- 
-  // Sort descending by start so DOM mutations don't shift earlier offsets
-  const sorted = [...ranges].sort((a, b) => b.start - a.start);
- 
-  for (const { start, end, className } of sorted) {
-    // Re-collect text nodes each iteration because previous iterations
-    // may have split/wrapped nodes, changing the DOM
-    const textNodes = getTextNodes(container);
- 
-    // Find every text node that overlaps this range
-    const affected = textNodes.filter((n) => n.end > start && n.start < end);
- 
-    // Process in reverse document order so splits don't affect earlier nodes
-    for (const { node, start: nodeStart, end: nodeEnd } of [...affected].reverse()) {
-      const overlapStart = Math.max(start, nodeStart) - nodeStart;
-      const overlapEnd = Math.min(end, nodeEnd) - nodeStart;
- 
-      // Split off the portion before the highlight
-      const targetNode = overlapStart > 0 ? node.splitText(overlapStart) : node;
- 
-      // Split off the portion after the highlight
-      if (overlapEnd - overlapStart < (targetNode.textContent?.length ?? 0)) {
-        targetNode.splitText(overlapEnd - overlapStart);
-      }
- 
-      // Wrap just this text fragment in a <mark>
-      const mark = document.createElement('mark');
-      mark.className = className;
-      mark.dataset.highlight = 'true'; // used by clearHighlights
-      targetNode.parentNode?.insertBefore(mark, targetNode);
-      mark.appendChild(targetNode);
-    }
-  }
-}
-
-function getCharOffset(root: Node, targetNode: Node, targetOffset: number): number {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let total = 0;
-  let node = walker.nextNode();
-  while (node) {
-    if (node === targetNode) {
-      return total + targetOffset;
-    }
-    total += node.textContent?.length ?? 0;
-    node = walker.nextNode();
-  }
-  return total + targetOffset;
-}
-
 function generateId() {
   return Math.random().toString(36).slice(2, 9);
 }
@@ -232,7 +151,12 @@ function normalizeStoredAssignee(raw: unknown): TaggedAssignee | null {
   ) {
     return null;
   }
-  return { id: record.id, name: record.name, team: record.team };
+
+  return {
+    id: record.id,
+    name: record.name,
+    team: record.team,
+  };
 }
 
 function normalizeStoredComment(raw: unknown): Comment | null {
@@ -281,9 +205,18 @@ function normalizeStoredComment(raw: unknown): Comment | null {
   ) {
     const legacyTeam = isDepartment(record.department) ? record.department : departments[0] ?? null;
     if (legacyTeam) {
-      assignees.push({ id: record.assigneeId, name: record.assigneeName, team: legacyTeam });
+      assignees.push({
+        id: record.assigneeId,
+        name: record.assigneeName,
+        team: legacyTeam,
+      });
     }
   }
+
+  const uniqueDepartments = [...new Set(departments)];
+  const uniqueAssignees = assignees.filter(
+    (assignee, index, self) => index === self.findIndex((other) => other.id === assignee.id)
+  );
 
   return {
     id: record.id,
@@ -291,10 +224,8 @@ function normalizeStoredComment(raw: unknown): Comment | null {
     comment: record.comment,
     startOffset: record.startOffset,
     endOffset: record.endOffset,
-    departments: [...new Set(departments)],
-    assignees: assignees.filter(
-      (a, i, self) => i === self.findIndex((b) => b.id === a.id)
-    ),
+    departments: uniqueDepartments,
+    assignees: uniqueAssignees,
   };
 }
 
@@ -341,16 +272,25 @@ function CommentBubble({ selection, onAdd, onDismiss, bubbleRef, departments, te
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<number[]>([]);
 
   const selectedAssignees = teamMembers.filter((member) => selectedAssigneeIds.includes(member.id));
+
+  const visibleTeamMembers = teamMembers;
+
   const canSubmit = Boolean(text.trim() || selectedDepartments.length > 0 || selectedAssignees.length > 0);
 
   const submit = () => {
     if (!canSubmit) return;
+
     const mergedDepartments = new Set<DepartmentName>(selectedDepartments);
-    selectedAssignees.forEach((a) => mergedDepartments.add(a.team));
+    selectedAssignees.forEach((assignee) => mergedDepartments.add(assignee.team));
+
     onAdd({
       text: text.trim(),
       departments: [...mergedDepartments],
-      assignees: selectedAssignees.map((a) => ({ id: a.id, name: a.name, team: a.team })),
+      assignees: selectedAssignees.map((assignee) => ({
+        id: assignee.id,
+        name: assignee.name,
+        team: assignee.team,
+      })),
     });
   };
 
@@ -374,21 +314,25 @@ function CommentBubble({ selection, onAdd, onDismiss, bubbleRef, departments, te
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            submit();
+          }
           if (e.key === 'Escape') onDismiss();
         }}
       />
 
       {(selectedDepartments.length > 0 || selectedAssignees.length > 0) && (
         <div className="flex flex-wrap gap-1 mt-2">
-          {selectedDepartments.map((d) => (
-            <span key={d} className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${getDepartmentStyle(d).chipClass}`}>
-              {d}
+          {selectedDepartments.map((department) => (
+            <span key={department} className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${getDepartmentStyle(department).chipClass}`}>
+              {department}
             </span>
           ))}
-          {selectedAssignees.map((a) => (
-            <span key={a.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-700">
-              <User className="w-3 h-3" />{a.name}
+          {selectedAssignees.map((assignee) => (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-700">
+              <User className="w-3 h-3" />
+              {assignee.name}
             </span>
           ))}
         </div>
@@ -400,7 +344,8 @@ function CommentBubble({ selection, onAdd, onDismiss, bubbleRef, departments, te
           onClick={() => setShowTagPicker((prev) => !prev)}
           className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 px-2 py-1 rounded-md hover:bg-indigo-50"
         >
-          <Tag className="w-3.5 h-3.5" />Tag
+          <Tag className="w-3.5 h-3.5" />
+          Tag
         </button>
 
         {showTagPicker && (
@@ -408,41 +353,51 @@ function CommentBubble({ selection, onAdd, onDismiss, bubbleRef, departments, te
             <div>
               <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Departments</p>
               <div className="flex flex-wrap gap-1.5">
-                {departments.map((d) => (
+                {departments.map((department) => (
                   <button
-                    key={d}
+                    key={department}
                     type="button"
-                    onClick={() => setSelectedDepartments((prev) =>
-                      prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]
-                    )}
-                    className={`px-2 py-1 rounded-md text-[11px] font-medium border ${selectedDepartments.includes(d) ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+                    onClick={() => {
+                      if (selectedDepartments.includes(department)) {
+                        setSelectedDepartments((prev) => prev.filter((item) => item !== department));
+                        return;
+                      }
+                      setSelectedDepartments((prev) => [...prev, department]);
+                    }}
+                    className={`px-2 py-1 rounded-md text-[11px] font-medium border ${selectedDepartments.includes(department) ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
                   >
-                    {d}
+                    {department}
                   </button>
                 ))}
               </div>
             </div>
+
             <div>
               <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Team Members</p>
               <div className="max-h-28 overflow-y-auto space-y-1">
-                {teamMembers.length > 0 ? teamMembers.map((member) => (
-                  <button
-                    key={member.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedAssigneeIds((prev) =>
-                        prev.includes(member.id) ? prev.filter((x) => x !== member.id) : [...prev, member.id]
-                      );
-                      if (!selectedDepartments.includes(member.team)) {
-                        setSelectedDepartments((prev) => [...prev, member.team]);
-                      }
-                    }}
-                    className={`w-full text-left px-2 py-1 rounded-md text-[11px] border ${selectedAssigneeIds.includes(member.id) ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
-                  >
-                    {member.name}<span className="ml-1 text-gray-400">({member.team})</span>
-                  </button>
-                )) : (
-                  <p className="text-[11px] text-gray-400 italic">No team members found.</p>
+                {visibleTeamMembers.length > 0 ? (
+                  visibleTeamMembers.map((member) => (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => {
+                        if (selectedAssigneeIds.includes(member.id)) {
+                          setSelectedAssigneeIds((prev) => prev.filter((item) => item !== member.id));
+                          return;
+                        }
+                        setSelectedAssigneeIds((prev) => [...prev, member.id]);
+                        if (!selectedDepartments.includes(member.team)) {
+                          setSelectedDepartments((prev) => [...prev, member.team]);
+                        }
+                      }}
+                      className={`w-full text-left px-2 py-1 rounded-md text-[11px] border ${selectedAssigneeIds.includes(member.id) ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      {member.name}
+                      <span className="ml-1 text-gray-400">({member.team})</span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-[11px] text-gray-400 italic">No team members found for this department.</p>
                 )}
               </div>
             </div>
@@ -450,14 +405,16 @@ function CommentBubble({ selection, onAdd, onDismiss, bubbleRef, departments, te
         )}
 
         <div className="flex justify-end gap-2">
-          <button onClick={onDismiss} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1">Cancel</button>
-          <button
-            disabled={!canSubmit}
-            onClick={submit}
-            className="text-xs bg-indigo-600 text-white px-3 py-1 rounded-lg disabled:opacity-40 hover:bg-indigo-700"
-          >
-            Save
-          </button>
+        <button onClick={onDismiss} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1">
+          Cancel
+        </button>
+        <button
+          disabled={!canSubmit}
+          onClick={submit}
+          className="text-xs bg-indigo-600 text-white px-3 py-1 rounded-lg disabled:opacity-40 hover:bg-indigo-700"
+        >
+          Save
+        </button>
         </div>
       </div>
     </div>
@@ -490,41 +447,66 @@ function CommentSidebar({ comments, onDelete, onRemoveDepartment, onRemoveAssign
         const primaryDepartment = c.departments[0] ?? c.assignees[0]?.team;
         const style = getDepartmentStyle(primaryDepartment);
         return (
-          <div key={c.id} className={`${style.cardClass} border ${style.borderClass} rounded-xl p-3 text-sm relative group`}>
-            <p className={`${style.quoteClass} text-xs italic mb-2 truncate px-2 py-1 rounded-md`}>
-              "{c.highlightedText.slice(0, 50)}{c.highlightedText.length > 50 ? '…' : ''}"
-            </p>
-            {(c.departments.length > 0 || c.assignees.length > 0) && (
-              <div className="flex flex-wrap gap-1 mb-2">
-                {c.departments.map((d) => (
-                  <span key={d} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${getDepartmentStyle(d).chipClass}`}>
-                    {d}
-                    <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemoveDepartment(c.id, d); }} className="inline-flex items-center justify-center rounded-full hover:bg-black/10">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-                {c.assignees.map((a) => (
-                  <span key={a.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-700">
-                    <User className="w-3 h-3" />{a.name}
-                    <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemoveAssignee(c.id, a.id); }} className="inline-flex items-center justify-center rounded-full hover:bg-black/10">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            {c.comment ? (
-              <p className="text-gray-700 leading-relaxed">{c.comment}</p>
-            ) : (
-              <p className="text-gray-500 italic">Tag only</p>
-            )}
-            <button type="button" onClick={() => onDelete(c.id)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity">
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        );
-      })}
+        <div key={c.id} className={`${style.cardClass} border ${style.borderClass} rounded-xl p-3 text-sm relative group`}>
+          <p className={`${style.quoteClass} text-xs italic mb-2 truncate px-2 py-1 rounded-md`}>
+            "{c.highlightedText.slice(0, 50)}{c.highlightedText.length > 50 ? '…' : ''}"
+          </p>
+
+          {(c.departments.length > 0 || c.assignees.length > 0) && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {c.departments.map((department) => (
+                <span key={department} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${getDepartmentStyle(department).chipClass}`}>
+                  {department}
+                  <button
+                    type="button"
+                    title="Untag department"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onRemoveDepartment(c.id, department);
+                    }}
+                    className="inline-flex items-center justify-center rounded-full hover:bg-black/10"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              {c.assignees.map((assignee) => (
+                <span key={assignee.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-700">
+                  <User className="w-3 h-3" />
+                  {assignee.name}
+                  <button
+                    type="button"
+                    title="Untag assignee"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onRemoveAssignee(c.id, assignee.id);
+                    }}
+                    className="inline-flex items-center justify-center rounded-full hover:bg-black/10"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {c.comment ? (
+            <p className="text-gray-700 leading-relaxed">{c.comment}</p>
+          ) : (
+            <p className="text-gray-500 italic">Tag only</p>
+          )}
+          <button
+            type="button"
+            onClick={() => onDelete(c.id)}
+            title="Untag"
+            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )})}
     </div>
   );
 }
@@ -540,61 +522,62 @@ interface SummaryWithHighlightsProps {
   containerRef: React.RefObject<HTMLDivElement>;
   onMouseUp: () => void;
 }
- 
-function SummaryWithHighlights({
-  summary,
-  comments,
-  pendingSelection,
-  containerRef,
-  onMouseUp,
-}: SummaryWithHighlightsProps) {
-  // React-owned source of truth — hidden, never manually mutated
-  const sourceRef = useRef<HTMLDivElement>(null);
- 
-  const html = marked(summary) as string;
- 
-  const ranges = [
-    ...comments.map((c) => ({
-      start: c.startOffset,
-      end: c.endOffset,
-      className: 'bg-yellow-200 rounded-sm',
-    })),
-    ...(pendingSelection
-      ? [{ start: pendingSelection.startOffset, end: pendingSelection.endOffset, className: 'bg-yellow-200 rounded-sm' }]
-      : []),
-  ];
- 
-  const rangesKey = ranges.map((r) => `${r.start}-${r.end}`).join(',');
- 
-  // Whenever the clean HTML or highlight ranges change, re-clone the source
-  // into the visible container and apply marks to the clone.
-  useLayoutEffect(() => {
-    if (!sourceRef.current || !containerRef.current) return;
-    // Replace visible container's content with a fresh clone of the clean HTML
-    containerRef.current.innerHTML = sourceRef.current.innerHTML;
-    // Now mutate only the visible container — React never touches it
-    applyHighlights(containerRef.current, ranges);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [html, rangesKey]);
- 
+
+function SummaryWithHighlights({ summary, comments, pendingSelection, containerRef, onMouseUp }: SummaryWithHighlightsProps) {
+  const buildHighlightedText = () => {
+    if (comments.length === 0) return null;
+    const sorted = [...comments].sort((a, b) => a.startOffset - b.startOffset);
+    let result = '';
+    let cursor = 0;
+    for (const c of sorted) {
+      if (c.startOffset > cursor) result += summary.slice(cursor, c.startOffset);
+      const end = Math.min(c.endOffset, summary.length);
+      const primaryDepartment = c.departments[0] ?? c.assignees[0]?.team;
+      const style = getDepartmentStyle(primaryDepartment);
+      result += `<mark class="${style.markClass} rounded-sm">${summary.slice(c.startOffset, end)}</mark>`;
+      cursor = end;
+    }
+    result += summary.slice(cursor);
+    return result;
+  };
+
+  const highlighted = buildHighlightedText();
+
   return (
-    <>
-      {/* Hidden React-owned div — markdown rendered here, never mutated */}
-      <div
-        ref={sourceRef}
-        style={{ display: 'none' }}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-      {/* Visible div — we own this DOM entirely, React never renders into it */}
-      <div
-        ref={containerRef}
-        onMouseUp={onMouseUp}
-        className="bg-white border border-gray-200 rounded-xl p-6 prose prose-sm max-w-none text-gray-800 select-text cursor-text"
-      />
-    </>
+    <div
+      ref={containerRef}
+      onMouseUp={onMouseUp}
+      className="relative bg-white border border-gray-200 rounded-xl p-6 prose prose-sm max-w-none text-gray-800 select-text cursor-text"
+    >
+      {highlighted ? (
+        <div
+          className="whitespace-pre-wrap font-sans text-sm leading-relaxed"
+          dangerouslySetInnerHTML={{ __html: highlighted }}
+        />
+      ) : (
+        <SummaryMarkdown content={summary} />
+      )}
+
+      {pendingSelection && pendingSelection.rects.length > 0 && (
+        <div className="pointer-events-none absolute inset-0">
+          {pendingSelection.rects.map((rect, index) => (
+            <div
+              key={`${pendingSelection.startOffset}-${pendingSelection.endOffset}-${index}`}
+              className="absolute rounded-sm bg-indigo-200/70"
+              style={{
+                top: rect.top,
+                left: rect.left,
+                width: rect.width,
+                height: rect.height,
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
- 
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -604,7 +587,7 @@ export function TranscriptSummary() {
   const navigate = useNavigate();
 
   const [summary, setSummary] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // always try to load existing summary on mount
   const [regenerating, setRegenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -613,17 +596,7 @@ export function TranscriptSummary() {
   const [regenerateSuccess, setRegenerateSuccess] = useState(false);
 
   const [comments, setComments] = useState<Comment[]>([]);
-
-  // pendingSelection is mirrored into a ref so the once-registered mousedown
-  // listener can read the current value without ever re-registering.
-  const [pendingSelection, _setPendingSelection] = useState<SelectionInfo | null>(null);
-  const pendingSelectionRef = useRef<SelectionInfo | null>(null);
-  // Memoize the setter so it's stable across renders and safe to use in useCallback deps.
-  const setPendingSelection = useCallback((val: SelectionInfo | null) => {
-    pendingSelectionRef.current = val;
-    _setPendingSelection(val);
-  }, []); // no deps — _setPendingSelection from useState is always stable
-
+  const [pendingSelection, setPendingSelection] = useState<SelectionInfo | null>(null);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const commentsForRegeneration = comments.filter((c) => c.comment.trim().length > 0);
   const draftStorageKey = id ? `${SUMMARY_DRAFT_STORAGE_PREFIX}${id}` : null;
@@ -631,27 +604,29 @@ export function TranscriptSummary() {
 
   const summaryContainerRef = useRef<HTMLDivElement>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
-  // Keep a stable ref to the current summary so handleMouseUp doesn't need
-  // to re-memoize every time the summary text changes.
-  const summaryRef = useRef<string | null>(null);
-  summaryRef.current = summary;
 
-  // On mount: try to load an existing summary (final → draft).
+  // On mount: try to load an existing summary (final → draft), then drop into edit mode.
   useEffect(() => {
-    if (!id || !supabase) { setLoading(false); return; }
+    if (!id) { setLoading(false); return; }
+    if (!supabase) { setLoading(false); return; }
 
     async function loadExistingSummary() {
       try {
         setLoading(true);
         setError(null);
+
+        // Prefer the finalized version; fall back to draft.
         const paths = [`summaries/${id}_final.md`, `summaries/${id}.txt`];
         for (const path of paths) {
-          const { data, error: dlError } = await supabase!.storage.from('transcripts').download(path);
+          const { data, error: dlError } = await supabase!.storage
+            .from('transcripts')
+            .download(path);
           if (!dlError && data) {
             setSummary(await data.text());
-            return;
+            return; // found one — stop searching
           }
         }
+        // No existing summary found — leave summary null so the generate prompt shows.
       } catch (err) {
         console.error('Failed to probe existing summary:', err);
       } finally {
@@ -661,18 +636,25 @@ export function TranscriptSummary() {
 
     loadExistingSummary();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // run once on mount only
 
   useEffect(() => {
     let cancelled = false;
+
     async function loadTeamMembers() {
       try {
         const res = await fetch(`${BACKEND_URL}/api/teams/members`);
         if (!res.ok) return;
+
         const data = await res.json();
         if (!Array.isArray(data) || cancelled) return;
+
         const normalized: TeamMember[] = data
-          .filter((item: unknown) => item && typeof item === 'object' && isDepartment((item as { team?: unknown }).team))
+          .filter((item: unknown) => {
+            if (!item || typeof item !== 'object') return false;
+            const record = item as { team?: unknown };
+            return isDepartment(record.team);
+          })
           .map((item: { id?: unknown; team: DepartmentName; name?: unknown; role?: unknown; email?: unknown }) => ({
             id: typeof item.id === 'number' ? item.id : 0,
             team: item.team,
@@ -680,50 +662,76 @@ export function TranscriptSummary() {
             role: typeof item.role === 'string' ? item.role : '',
             email: typeof item.email === 'string' ? item.email : '',
           }))
-          .filter((m) => m.id > 0);
+          .filter((member) => member.id > 0);
+
         setTeamMembers(normalized);
       } catch {
         setTeamMembers([]);
       }
     }
+
     loadTeamMembers();
-    return () => { cancelled = true; };
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (!draftStorageKey || !summary || hasHydratedDraftRef.current) return;
+
     try {
       const raw = localStorage.getItem(draftStorageKey);
-      if (!raw) { hasHydratedDraftRef.current = true; return; }
+      if (!raw) {
+        hasHydratedDraftRef.current = true;
+        return;
+      }
+
       const parsed = JSON.parse(raw) as Partial<StoredSummaryDraft>;
-      if (parsed.summary !== summary || !Array.isArray(parsed.comments)) { hasHydratedDraftRef.current = true; return; }
-      const normalized = parsed.comments.map(normalizeStoredComment).filter((x): x is Comment => x !== null);
+      if (parsed.summary !== summary || !Array.isArray(parsed.comments)) {
+        hasHydratedDraftRef.current = true;
+        return;
+      }
+
+      const normalized = parsed.comments
+        .map((item) => normalizeStoredComment(item))
+        .filter((item): item is Comment => item !== null);
+
       setComments(normalized);
-    } catch { /* ignore */ } finally {
+    } catch {
+      // ignore invalid local draft payload
+    } finally {
       hasHydratedDraftRef.current = true;
     }
   }, [draftStorageKey, summary]);
 
   useEffect(() => {
     if (!draftStorageKey || !summary || !hasHydratedDraftRef.current) return;
+
+    const payload: StoredSummaryDraft = {
+      summary,
+      comments,
+    };
+
     try {
-      localStorage.setItem(draftStorageKey, JSON.stringify({ summary, comments }));
-    } catch { /* ignore */ }
+      localStorage.setItem(draftStorageKey, JSON.stringify(payload));
+    } catch {
+      // ignore storage quota/access errors
+    }
   }, [draftStorageKey, summary, comments]);
 
-  // Registered once — reads live values via refs, never needs to re-register.
+  // Dismiss comment bubble on outside click
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {
-      if (!pendingSelectionRef.current) return;
+      if (!pendingSelection) return;
       const target = e.target as Node;
       if (!bubbleRef.current?.contains(target) && !summaryContainerRef.current?.contains(target)) {
-        pendingSelectionRef.current = null;
-        _setPendingSelection(null);
+        setPendingSelection(null);
       }
     };
     document.addEventListener('mousedown', handleMouseDown);
     return () => document.removeEventListener('mousedown', handleMouseDown);
-  }, []); // empty — intentional
+  }, [pendingSelection]);
 
   // ---- Generate initial summary ----
 
@@ -732,6 +740,7 @@ export function TranscriptSummary() {
     setError(null);
     setSummary(null);
     setComments([]);
+
     try {
       const res = await fetch(`${BACKEND_URL}/api/summarize/${id}`, { method: 'POST' });
       if (!res.ok) {
@@ -748,23 +757,18 @@ export function TranscriptSummary() {
   };
 
   // ---- Text selection → comment bubble ----
-  // Uses summaryRef (not summary) so it never needs to re-memoize when summary changes,
-  // and uses the stable setPendingSelection so its own identity is also stable.
 
-    const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback(() => {
     if (bubbleRef.current?.contains(document.activeElement)) return;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) return;
-    const selectedText = selection.toString();
-    if (!selectedText.trim() || !summaryContainerRef.current) return;
+    const selectedText = selection.toString().trim();
+    if (!selectedText || !summaryContainerRef.current) return;
     const range = selection.getRangeAt(0);
     if (!summaryContainerRef.current.contains(range.commonAncestorContainer)) return;
- 
-    // Use TreeWalker to get character offsets that are reliable across
-    // all node types and multi-line selections.
-    const start = getCharOffset(summaryContainerRef.current, range.startContainer, range.startOffset);
-    const end = getCharOffset(summaryContainerRef.current, range.endContainer, range.endOffset);
- 
+    const start = summary?.indexOf(selectedText) ?? -1;
+    if (start === -1) return;
+
     const containerRect = summaryContainerRef.current.getBoundingClientRect();
     const rects = Array.from(range.getClientRects())
       .filter((r) => r.width > 0 && r.height > 0)
@@ -774,35 +778,35 @@ export function TranscriptSummary() {
         width: r.width,
         height: r.height,
       }));
- 
+
     setPendingSelection({
-      text: selectedText.trim(),
+      text: selectedText,
       startOffset: start,
-      endOffset: end,
+      endOffset: start + selectedText.length,
       rect: range.getBoundingClientRect(),
       rects,
     });
-  }, [setPendingSelection]);
- 
+  }, [summary]);
 
-  const handleAddComment = useCallback((payload: NewCommentPayload) => {
-    if (!pendingSelectionRef.current) return;
-    const sel = pendingSelectionRef.current;
+  // TODO: for some reason after adding a comment, it's no longer
+  // rendering the markdown.
+  const handleAddComment = (payload: NewCommentPayload) => {
+    if (!pendingSelection) return;
     setComments((prev) => [
       ...prev,
       {
         id: generateId(),
-        highlightedText: sel.text,
+        highlightedText: pendingSelection.text,
         comment: payload.text,
-        startOffset: sel.startOffset,
-        endOffset: sel.endOffset,
+        startOffset: pendingSelection.startOffset,
+        endOffset: pendingSelection.endOffset,
         departments: payload.departments,
         assignees: payload.assignees,
       },
     ]);
     setPendingSelection(null);
     window.getSelection()?.removeAllRanges();
-  }, [setPendingSelection]);
+  };
 
   const handleDeleteComment = (commentId: string) => {
     setComments((prev) => prev.filter((c) => c.id !== commentId));
@@ -812,9 +816,21 @@ export function TranscriptSummary() {
     setComments((prev) =>
       prev.flatMap((comment) => {
         if (comment.id !== commentId) return [comment];
-        const next: Comment = { ...comment, departments: comment.departments.filter((d) => d !== department) };
-        if (!next.comment.trim() && !next.departments.length && !next.assignees.length) return [];
-        return [next];
+
+        const nextComment: Comment = {
+          ...comment,
+          departments: comment.departments.filter((item) => item !== department),
+        };
+
+        const hasText = nextComment.comment.trim().length > 0;
+        const hasDepartment = nextComment.departments.length > 0;
+        const hasAssignee = nextComment.assignees.length > 0;
+
+        if (!hasText && !hasDepartment && !hasAssignee) {
+          return [];
+        }
+
+        return [nextComment];
       })
     );
   };
@@ -823,9 +839,21 @@ export function TranscriptSummary() {
     setComments((prev) =>
       prev.flatMap((comment) => {
         if (comment.id !== commentId) return [comment];
-        const next: Comment = { ...comment, assignees: comment.assignees.filter((a) => a.id !== assigneeId) };
-        if (!next.comment.trim() && !next.departments.length && !next.assignees.length) return [];
-        return [next];
+
+        const nextComment: Comment = {
+          ...comment,
+          assignees: comment.assignees.filter((assignee) => assignee.id !== assigneeId),
+        };
+
+        const hasText = nextComment.comment.trim().length > 0;
+        const hasDepartment = nextComment.departments.length > 0;
+        const hasAssignee = nextComment.assignees.length > 0;
+
+        if (!hasText && !hasDepartment && !hasAssignee) {
+          return [];
+        }
+
+        return [nextComment];
       })
     );
   };
@@ -906,6 +934,7 @@ export function TranscriptSummary() {
       <div className="flex-1 overflow-auto p-8 bg-[#F8F9FB]">
         <div className="max-w-6xl mx-auto">
 
+          {/* Loading */}
           {loading && (
             <div className="flex flex-col items-center justify-center py-32 gap-3 text-gray-500">
               <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
@@ -913,18 +942,23 @@ export function TranscriptSummary() {
             </div>
           )}
 
+          {/* ── EDITING / COMMENTABLE FLOW (always) ── */}
           {!loading && (
             <>
+              {/* Initial state */}
               {!error && !summary && (
                 <div className="flex flex-col items-center justify-center py-32 gap-4 text-center">
                   <Sparkles className="w-10 h-10 text-indigo-400" />
                   <p className="text-gray-600 text-sm max-w-sm">
                     Click below to generate an AI summary of this session's transcript.
                   </p>
-                  <PrimaryButton onClick={handleGenerateSummary}>Generate Summary</PrimaryButton>
+                  <PrimaryButton onClick={handleGenerateSummary}>
+                    Generate Summary
+                  </PrimaryButton>
                 </div>
               )}
 
+              {/* Error */}
               {error && (
                 <div className="space-y-4">
                   <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
@@ -938,13 +972,15 @@ export function TranscriptSummary() {
                 </div>
               )}
 
+              {/* Summary + comment panel */}
               {!error && summary && (
                 <div className="flex gap-6 items-start relative">
 
+                  {/* ---- Left: summary ---- */}
                   <div className="flex-1 min-w-0 space-y-4">
                     <div className="flex items-center gap-2 text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
                       <MessageSquare className="w-3.5 h-3.5 flex-shrink-0" />
-                      Highlight any text to add a comment or tag. If you wish to regenerate from your edits, click "Done with edits".
+                      Highlight any text to add a comment. When you're done, click "Done with edits" to regenerate.
                     </div>
 
                     <SummaryWithHighlights
@@ -957,30 +993,35 @@ export function TranscriptSummary() {
 
                     {regenerateError && (
                       <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
-                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />{regenerateError}
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        {regenerateError}
                       </div>
                     )}
                     {regenerateSuccess && (
                       <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg p-3 text-green-700 text-sm">
-                        <CheckCircle2 className="w-4 h-4" />Summary updated successfully!
+                        <CheckCircle2 className="w-4 h-4" />
+                        Summary updated successfully!
                       </div>
                     )}
                     {saveError && (
                       <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
-                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />{saveError}
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        {saveError}
                       </div>
                     )}
 
                     <div className="flex gap-3">
                       <PrimaryButton onClick={saveSummary} fullWidth disabled={saving}>
-                        {saving
-                          ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
-                          : <><CheckCircle2 className="w-4 h-4" /> Approve &amp; Save</>
-                        }
+                        {saving ? (
+                          <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+                        ) : (
+                          <><CheckCircle2 className="w-4 h-4" /> Approve &amp; Save</>
+                        )}
                       </PrimaryButton>
                     </div>
                   </div>
 
+                  {/* ---- Right: comment sidebar ---- */}
                   <div className="w-72 flex-shrink-0 sticky top-0">
                     <div className="bg-white border border-gray-200 rounded-xl p-4">
                       <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5 mb-3">
@@ -1007,15 +1048,17 @@ export function TranscriptSummary() {
                           onClick={handleDoneWithEdits}
                           className="mt-4 w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium rounded-xl py-2.5 transition-colors"
                         >
-                          {regenerating
-                            ? <><Loader2 className="w-4 h-4 animate-spin" /> Regenerating…</>
-                            : <><Sparkles className="w-4 h-4" /> Done with edits</>
-                          }
+                          {regenerating ? (
+                            <><Loader2 className="w-4 h-4 animate-spin" /> Regenerating…</>
+                          ) : (
+                            <><Sparkles className="w-4 h-4" /> Done with edits</>
+                          )}
                         </button>
                       )}
                     </div>
                   </div>
 
+                  {/* ---- Floating comment bubble ---- */}
                   {pendingSelection && (
                     <CommentBubble
                       selection={pendingSelection}
