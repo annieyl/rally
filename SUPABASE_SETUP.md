@@ -33,10 +33,13 @@ SUPABASE_KEY=your-anon-key-here
 
 1. In Supabase, go to **SQL Editor**
 2. Click **New Query**
-3. Copy and paste the contents of `backend/sql_schema.sql`
-4. Click **Run**
+3. Run `backend/migrations/001_initial_schema.sql`
+4. Run `backend/migrations/002_team_members.sql`
+5. Click **Run** for each file
 
-This creates the `sessions` table with:
+This creates the `sessions`, `chat_messages`, and `team_members` tables.
+
+The `sessions` table includes:
 - `session_id` - Unique session identifier
 - `user_id` - Optional user tracking
 - `transcript_url` - Public URL to transcript JSON
@@ -161,7 +164,7 @@ You can retrieve past transcripts by:
 - Go to Supabase Storage and create `transcripts` bucket
 
 **Error: "relation 'sessions' does not exist"**
-- Run the SQL schema from `sql_schema.sql`
+- Run migrations in order from `backend/migrations/README.md`
 
 **Error: "401 Unauthorized"**
 - Check that your Anon Key is correct
